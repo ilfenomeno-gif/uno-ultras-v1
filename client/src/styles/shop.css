@@ -249,68 +249,6 @@
   gap: 0.75rem;
 }
 
-.mg-table {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.mg-status-bar {
-  display: flex;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  padding: 0.6rem 0.75rem;
-  border-radius: 8px;
-  background: rgba(0, 240, 255, 0.1);
-}
-
-.mg-zone {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.mg-zone-label {
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  opacity: 0.8;
-}
-
-.mg-cards-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-}
-
-.mg-card {
-  min-width: 56px;
-  height: 76px;
-  padding: 0.4rem;
-  border-radius: 8px;
-  background: #f6f8ff;
-  color: #101726;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  border: 2px solid #9db4dc;
-}
-
-.mg-card.is-red {
-  color: #c81e3a;
-  border-color: #f38ba0;
-}
-
-.mg-card-rank {
-  font-size: 1.05rem;
-}
-
-.mg-card-suit {
-  font-size: 1.15rem;
-}
-
 body.high-contrast {
   filter: contrast(1.18);
 }
