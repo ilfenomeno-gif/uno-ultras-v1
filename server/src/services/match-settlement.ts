@@ -1,7 +1,9 @@
 // ============================================================
-// UNO ULTRA Server — Authoritative Match Settlement Orchestrator
+// UNO ULTRA Server — Authoritative MCP Match Progression Hub
+// (Coordina Rank, Match, MMR, Modalità, Sfide, Battle Card & Valute)
 // ============================================================
 
+import { getRankFromMMR, type MatchRewardReceipt } from '@uno/shared';
 import { logger } from '../config/logger.js';
 import { settleRankedMatchForPlayers } from '../matchmaking/mmr.js';
 import { addBattleCardXp } from '../persistence/postgres/repositories/battle-card.js';
@@ -37,26 +39,63 @@ export interface SettleFinishedMatchInput {
   readonly replayEvents?: readonly Record<string, unknown>[];
 }
 
+export const MODE_REWARD_MULTIPLIERS: Readonly<Record<string, number>> = {
+  uno: 1.0,
+  blackjack: 0.9,
+  scala40: 1.0,
+  scopa: 0.9,
+  'ruba-mazzetto': 0.9,
+  'poker-texas': 1.05,
+  burraco: 1.05,
+  'mille-miglia': 0.95,
+};
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export async function settleFinishedMatch(input: SettleFinishedMatchInput): Promise<void> {
+export function resolveModeMultiplier(mode: string, isRanked: boolean): number {
+  const base = MODE_REWARD_MULTIPLIERS[mode] ?? 1.0;
+  return Number((base + (isRanked ? 0.2 : 0)).toFixed(2));
+}
+
+export async function settleFinishedMatchWithReceipts(
+  input: SettleFinishedMatchInput,
+): Promise<Record<string, MatchRewardReceipt>> {
+  const receipts: Record<string, MatchRewardReceipt> = {};
+  const variant = input.variant ?? 'standard';
+  const modeMultiplier = resolveModeMultiplier(input.mode, input.isRanked);
+
   try {
-    const rankedHumans = new Map<string, { mmr: number; username: string }>();
+    const rankedHumans = new Map<
+      string,
+      { mmr: number; username: string; vcard: number; rankTier: string; battleCardLevel: number }
+    >();
 
     for (const p of input.participants) {
       if (p.isBot || !UUID_RE.test(p.id)) continue;
       try {
         const row = await findPlayerById(p.id);
-        if (row) rankedHumans.set(p.id, { mmr: Number(row.mmr), username: row.username });
+        if (row) {
+          rankedHumans.set(p.id, {
+            mmr: Number(row.mmr),
+            username: row.username,
+            vcard: Number(row.vcard),
+            rankTier: row.rank_tier,
+            battleCardLevel: Number(row.battle_card_level),
+          });
+        }
       } catch {
         // Ignore individual DB lookup failure
       }
     }
 
-    const mmrUpdates = new Map<string, { before: number; after: number; delta: number }>();
+    const mmrUpdates = new Map<
+      string,
+      { before: number; after: number; delta: number; rankTier: string }
+    >();
     if (input.isRanked && rankedHumans.size > 0) {
       const settlements = await settleRankedMatchForPlayers({
         winnerId: input.winnerId,
+        playlistMultiplier: modeMultiplier,
         participants: input.participants.map((p) => ({
           playerId: p.id,
           username: rankedHumans.get(p.id)?.username ?? p.username,
@@ -65,7 +104,12 @@ export async function settleFinishedMatch(input: SettleFinishedMatchInput): Prom
         })),
       });
       for (const s of settlements) {
-        mmrUpdates.set(s.playerId, { before: s.mmrBefore, after: s.mmrAfter, delta: s.delta });
+        mmrUpdates.set(s.playerId, {
+          before: s.mmrBefore,
+          after: s.mmrAfter,
+          delta: s.delta,
+          rankTier: s.rankTier,
+        });
       }
     }
 
@@ -80,10 +124,27 @@ export async function settleFinishedMatch(input: SettleFinishedMatchInput): Prom
       const p = sorted[i]!;
       const placement = i + 1;
       const won = p.id === input.winnerId;
-      const isPersistedHuman = !p.isBot && UUID_RE.test(p.id) && rankedHumans.has(p.id);
-      const vcardEarned = isPersistedHuman ? (won ? 35 : 10) : 0;
-      const xpEarned = isPersistedHuman ? (won ? 250 : 100) : 0;
+      const humanSnapshot = rankedHumans.get(p.id);
+      const isPersistedHuman = !p.isBot && UUID_RE.test(p.id) && humanSnapshot !== undefined;
+      const isHumanInput = !p.isBot;
+
+      const vcardEarned = isHumanInput ? Math.round((won ? 40 : 15) * modeMultiplier) : 0;
+      const xpEarned = isHumanInput ? Math.round((won ? 250 : 110) * modeMultiplier) : 0;
+      const tournamentCreditsEarned =
+        isHumanInput && input.isRanked ? (won ? 25 : 5) : 0;
+
+      const baseMmr = humanSnapshot?.mmr ?? 400;
       const mmrInfo = mmrUpdates.get(p.id);
+      const mmrBefore = mmrInfo?.before ?? baseMmr;
+      const mmrAfter = mmrInfo?.after ?? baseMmr;
+      const mmrDelta = mmrInfo?.delta ?? 0;
+      const rankBefore = humanSnapshot?.rankTier ?? getRankFromMMR(mmrBefore);
+      const rankAfter = mmrInfo?.rankTier ?? getRankFromMMR(mmrAfter);
+      const rankPromoted = rankAfter !== rankBefore && mmrAfter > mmrBefore;
+
+      let vcardBalanceAfter = (humanSnapshot?.vcard ?? 0) + vcardEarned;
+      let battleCardLevelAfter = humanSnapshot?.battleCardLevel ?? 1;
+      let challengesProgressed = 0;
 
       participantRecords.push({
         ...(isPersistedHuman ? { playerId: p.id } : { botName: p.username }),
@@ -92,32 +153,74 @@ export async function settleFinishedMatch(input: SettleFinishedMatchInput): Prom
         score: p.score,
         mmrBefore: mmrInfo?.before ?? 0,
         mmrAfter: mmrInfo?.after ?? 0,
-        mmrDelta: mmrInfo?.delta ?? 0,
-        vcardEarned,
-        xpEarned,
+        mmrDelta,
+        vcardEarned: isPersistedHuman ? vcardEarned : 0,
+        xpEarned: isPersistedHuman ? xpEarned : 0,
       });
 
       if (isPersistedHuman) {
         try {
-          await applyBalanceDelta({
+          const vcardRes = await applyBalanceDelta({
             playerId: p.id,
             txType: 'match_reward',
             currency: 'vcard',
             delta: vcardEarned,
             referenceId: `${input.mode}:${input.matchId}`,
-            idempotencyKey: `match:${input.matchId}:${p.id}`,
+            idempotencyKey: `match:${input.matchId}:${p.id}:vcard`,
           });
-          await addBattleCardXp(p.id, xpEarned);
-          await incrementChallengeMetricsBatch(p.id, {
+          vcardBalanceAfter = vcardRes.balanceAfter;
+
+          if (tournamentCreditsEarned > 0) {
+            await applyBalanceDelta({
+              playerId: p.id,
+              txType: 'match_reward',
+              currency: 'tournament_credits',
+              delta: tournamentCreditsEarned,
+              referenceId: `${input.mode}:${input.matchId}`,
+              idempotencyKey: `match:${input.matchId}:${p.id}:tcredits`,
+            });
+          }
+
+          const bcState = await addBattleCardXp(p.id, xpEarned);
+          battleCardLevelAfter = bcState.level;
+
+          const metricDeltas = {
             matches_played: 1,
             matches_won: won ? 1 : 0,
             cards_played: p.cardsPlayed ?? 0,
             uno_calls: p.unoCalls ?? 0,
             draw_stacks: p.drawStacks ?? 0,
-          });
+          };
+          challengesProgressed = Object.values(metricDeltas).filter((v) => v > 0).length;
+          await incrementChallengeMetricsBatch(p.id, metricDeltas);
         } catch (err) {
           logger.warn({ err, playerId: p.id, matchId: input.matchId }, 'Match reward update failed');
         }
+      }
+
+      if (isHumanInput) {
+        receipts[p.id] = {
+          matchId: input.matchId,
+          mode: input.mode,
+          variant,
+          isRanked: input.isRanked,
+          won,
+          placement,
+          score: p.score,
+          mmrBefore,
+          mmrAfter,
+          mmrDelta,
+          rankBefore,
+          rankAfter,
+          rankPromoted,
+          xpEarned,
+          battleCardLevelAfter,
+          vcardEarned,
+          vcardBalanceAfter,
+          tournamentCreditsEarned,
+          challengesProgressed,
+          modeMultiplier,
+        };
       }
     }
 
@@ -129,7 +232,7 @@ export async function settleFinishedMatch(input: SettleFinishedMatchInput): Prom
 
     await recordFinishedMatch({
       mode: input.mode,
-      variant: input.variant ?? 'standard',
+      variant,
       isRanked: input.isRanked,
       ...(persistedWinnerId !== undefined ? { winnerId: persistedWinnerId } : {}),
       winnerLabel: winnerObj?.username ?? input.winnerId,
@@ -144,4 +247,10 @@ export async function settleFinishedMatch(input: SettleFinishedMatchInput): Prom
   } catch (err) {
     logger.warn({ err, matchId: input.matchId }, 'settleFinishedMatch failed (non-fatal)');
   }
+
+  return receipts;
+}
+
+export async function settleFinishedMatch(input: SettleFinishedMatchInput): Promise<void> {
+  await settleFinishedMatchWithReceipts(input);
 }

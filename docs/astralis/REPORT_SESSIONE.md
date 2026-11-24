@@ -4,7 +4,20 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
-## Sessione 2026-11-24 (Parte 9) — 7 Mini-Giochi a Schermo Intero Cyber-Arcade (`100vw × 100vh`)
+## Sessione 2026-11-24 (Parte 10) — Fix Loop Uscita, Schermate Vittoria & Sistema Progressione MCP Unificato
+
+- **Obiettivo**: risolvere il loop infinito `"Connessione alla partita…"` all'uscita dalla partita, aggiungere una vera schermata Vittoria/Sconfitta con accredito punti sia su UNO che sui 7 mini-giochi, e collegare un sistema MCP centrale tra **Rank**, **Match**, **MMR (Matchmaking)**, **Modalità**, **Sfide**, **Battle Card** e **Valute**.
+- **Stato Lavori**:
+  - `[x]` Contratto `MatchRewardReceipt` in `shared/src/protocol/messages.ts` incluso in `MatchEndedMessage`.
+  - `[x]` Hub MCP autoritativo in `server/src/services/match-settlement.ts` (`MODE_REWARD_MULTIPLIERS`, `resolveModeMultiplier`, `settleFinishedMatchWithReceipts`) collegato a `UnoRoom` (`server/src/rooms/uno/uno-room.ts`) ed esposto anche via REST in `server/src/net/tcp/rest-routes/progression.ts` (`POST /api/progression/settle-match`, `GET /api/progression/snapshot`).
+  - `[x]` Risoluzione loop uscita: sblocco garantito in `finally` in `client/src/ui/play/launcher.ts`, timeout + azzeramento stanza in `client/src/net/tcp/colyseus-client.ts` e guardia `exiting` in `client/src/game-view/table.ts`.
+  - `[x]` Schermate Vittoria & sincronizzazione profilo (`patchProfile` con MMR, Grado, V-Card e livello Battle Card) su UNO (`client/src/game-view/table.ts`) e sui 7 mini-giochi (`client/src/ui/minigames/sandbox-modal.ts` + `client/src/styles/minigames.css` + `client/src/net/tcp/rest-client.ts`).
+  - `[x]` Test dedicati in `server/tests/integration/progression-mcp.test.ts` (`4` test) e `npm run ci` verde (`23` suite Vitest / `155` test passati: shared `74`, server `37`, client `44`; `0` errori ESLint/TS; Vite `174` moduli `index-DDGIFS4c.js` / `index-Nx8hFItU.css`) + SHA-256 `contenuto-game.md` intatto (`83CAE3C057B35C22B460CC6F61BCF11AA355D1DB5F9EB4F2EC40517B2A1BD4D9`).
+  - `[x]` Rebuild offline e riavvio completo su Docker di entrambi i container `uno-server` (`shared/dist` + `server/dist`) e `uno-client` (`client/dist`).
+
+---
+
+## Sessione 2026-11-24 (Parte 9) — 7 Mini-Giochi a Schermo Intero Cyber-Arcade (`100vw × 100vh`) (`32c3ba5`)
 
 - **Obiettivo**: convertire tutti e 7 i tavoli dei mini-giochi (`Blackjack 21`, `Scala 40`, `Scopa Classica`, `Ruba Mazzetto`, `Poker Texas Hold'em`, `Burraco Online`, `Mille Miglia 1000`) da piccoli popup modali centrati a vere schermate a schermo intero (`100vw × 100vh`) con HUD superiore minimale (`requestFullscreen()`, `Esci`, punteggi live), interazione diretta sulle carte ed etichette naturali in italiano.
 - **Stato Lavori**:

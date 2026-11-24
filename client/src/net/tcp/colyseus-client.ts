@@ -58,11 +58,18 @@ export async function joinUnoRoom(opts: JoinOptions): Promise<Room<UnoRoomState>
 
 export async function leaveRoom(): Promise<void> {
   latestHand = null;
-  if (!room) return;
+  const active = room;
+  room = null;
+  if (!active) return;
   try {
-    await room.leave();
-  } finally {
-    room = null;
+    await Promise.race([
+      active.leave(true),
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, 1500);
+      }),
+    ]);
+  } catch {
+    // Non-fatal if socket already closed
   }
 }
 

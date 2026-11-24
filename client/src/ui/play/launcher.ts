@@ -105,15 +105,18 @@ export function createLauncherPanel(
   statusEl.setAttribute('role', 'status');
 
   playBtn.addEventListener('click', async () => {
+    if (playBtn.disabled) return;
     playBtn.disabled = true;
     statusEl.classList.remove('is-error');
     statusEl.textContent = 'Connessione alla partita…';
     try {
       await onLaunch({ ...state });
+      statusEl.textContent = '';
     } catch (err) {
       statusEl.classList.add('is-error');
       statusEl.textContent =
         err instanceof Error ? err.message : 'Impossibile avviare la partita. Riprova.';
+    } finally {
       playBtn.disabled = false;
     }
   });

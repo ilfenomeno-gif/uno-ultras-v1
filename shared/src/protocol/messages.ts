@@ -88,11 +88,36 @@ export interface ChallengeResultMessage {
   targetId: string;
 }
 
+/** Riepilogo ricompense MCP al termine di una partita (Rank, MMR, Battle Card, Sfide, V-Card). */
+export interface MatchRewardReceipt {
+  matchId: string;
+  mode: string;
+  variant: string;
+  isRanked: boolean;
+  won: boolean;
+  placement: number;
+  score: number;
+  mmrBefore: number;
+  mmrAfter: number;
+  mmrDelta: number;
+  rankBefore: string;
+  rankAfter: string;
+  rankPromoted: boolean;
+  xpEarned: number;
+  battleCardLevelAfter: number;
+  vcardEarned: number;
+  vcardBalanceAfter: number;
+  tournamentCreditsEarned: number;
+  challengesProgressed: number;
+  modeMultiplier: number;
+}
+
 /** Il server annuncia la fine della partita. */
 export interface MatchEndedMessage {
   type: 'match_ended';
   winnerId: string;
   scores: Record<string, number>;
+  receipts?: Record<string, MatchRewardReceipt>;
 }
 
 /** Il server notifica che un giocatore si è disconnesso. */

@@ -2,7 +2,13 @@
 // UNO ULTRA — REST API client (auth + social endpoints)
 // ============================================================
 
-import type { LoginPayload, PlayerProfile, RegisterPayload } from '@uno/shared';
+import type {
+  GameMode,
+  LoginPayload,
+  MatchRewardReceipt,
+  PlayerProfile,
+  RegisterPayload,
+} from '@uno/shared';
 import { getToken } from '../../state/profile-store.js';
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api';
@@ -380,4 +386,35 @@ export async function grantDevVCardPack(
     { packId, ...(idempotencyKey !== undefined ? { idempotencyKey } : {}) },
     true,
   );
+}
+
+export async function settleMiniGameMatch(payload: {
+  matchId: string;
+  mode: GameMode;
+  variant?: string;
+  isRanked: boolean;
+  won: boolean;
+  score: number;
+  opponentScore: number;
+  turnCount: number;
+  durationSec: number;
+  cardsPlayed?: number;
+}): Promise<{ receipt: MatchRewardReceipt }> {
+  return postJson('/progression/settle-match', payload, true);
+}
+
+export async function fetchProgressionSnapshot(): Promise<{
+  playerId: string;
+  username: string;
+  mmr: number;
+  rankTier: string;
+  vcardBalance: number;
+  tournamentCredits: number;
+  battleCard: { tier: string; level: number; xp: number };
+  challenges: { total: number; active: number; claimable: number };
+}> {
+  return requestJson('/progression/snapshot', {
+    method: 'GET',
+    headers: authHeaders(),
+  });
 }

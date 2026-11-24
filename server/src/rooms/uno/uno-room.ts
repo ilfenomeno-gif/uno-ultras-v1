@@ -29,7 +29,7 @@ import { adviseBotMove } from '../../ai/gemini-bot-advisor.js';
 import { featureFlags } from '../../config/feature-flags.js';
 import { getEquippedLoadout } from '../../persistence/postgres/repositories/inventory.js';
 import { RoomActionThrottle } from '../../security/anti-cheat.js';
-import { settleFinishedMatch } from '../../services/match-settlement.js';
+import { settleFinishedMatchWithReceipts } from '../../services/match-settlement.js';
 import { BaseRoom } from '../base/base-room.js';
 import { presenceService } from '../base/presence.js';
 import { UnoController, type UnoParticipant } from './uno-controller.js';
@@ -468,38 +468,50 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
       if (nextState.phase === 'finished' && nextState.winnerId) {
         this.clearTimers();
         const scores = this.controller.computeScores();
-        this.broadcast(TCP_CHANNELS.MATCH_ENDED, {
-          type: 'match_ended',
-          winnerId: nextState.winnerId,
-          scores,
+        const winnerId = nextState.winnerId;
+        const durationSec = Math.max(1, Math.round((Date.now() - this.startedAtMs) / 1000));
+        const participantsPayload = [...nextState.players.values()].map((p) => {
+          const c = this.playerCounters.get(p.id);
+          return {
+            id: p.id,
+            username: p.username,
+            isBot: p.isBot,
+            score: scores[p.id] ?? 0,
+            cardsPlayed: c?.cardsPlayed ?? 0,
+            unoCalls: c?.unoCalls ?? 0,
+            drawStacks: c?.drawStacks ?? 0,
+          };
         });
 
-        const durationSec = Math.max(1, Math.round((Date.now() - this.startedAtMs) / 1000));
-        void settleFinishedMatch({
+        void settleFinishedMatchWithReceipts({
           matchId: this.roomId,
           mode: 'uno',
-          variant: 'standard',
+          variant: this.matchConfig.variant,
           isRanked: this.isRanked,
-          winnerId: nextState.winnerId,
+          winnerId,
           turnCount: this.turnCount,
           durationSec,
-          participants: [...nextState.players.values()].map((p) => {
-            const c = this.playerCounters.get(p.id);
-            return {
-              id: p.id,
-              username: p.username,
-              isBot: p.isBot,
-              score: scores[p.id] ?? 0,
-              cardsPlayed: c?.cardsPlayed ?? 0,
-              unoCalls: c?.unoCalls ?? 0,
-              drawStacks: c?.drawStacks ?? 0,
-            };
-          }),
+          participants: participantsPayload,
           replaySeed: this.initialSeed,
           replayEvents: [...this.replayEvents],
-        });
+        })
+          .then((receipts) => {
+            this.broadcast(TCP_CHANNELS.MATCH_ENDED, {
+              type: 'match_ended',
+              winnerId,
+              scores,
+              receipts,
+            });
+          })
+          .catch(() => {
+            this.broadcast(TCP_CHANNELS.MATCH_ENDED, {
+              type: 'match_ended',
+              winnerId,
+              scores,
+            });
+          });
 
-        this.logInfo('UNO match finished', { winnerId: nextState.winnerId });
+        this.logInfo('UNO match finished', { winnerId });
         return;
       }
 

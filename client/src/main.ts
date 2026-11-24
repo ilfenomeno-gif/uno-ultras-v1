@@ -60,7 +60,7 @@ function bootstrap(): void {
 
   const handleLaunch = async (cfg: LauncherConfig): Promise<void> => {
     if (cfg.mode !== 'uno') {
-      openMiniGameSandboxModal(cfg.mode);
+      openMiniGameSandboxModal(cfg.mode, { ranked: cfg.ranked });
       return;
     }
     const maxPlayers = cfg.variant === 'team' ? 4 : cfg.playerCount === 1 ? 4 : cfg.playerCount;

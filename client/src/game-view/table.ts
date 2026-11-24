@@ -6,6 +6,7 @@ import type { Room } from 'colyseus.js';
 import {
   UNO_COLORS,
   type MatchEndedMessage,
+  type RankTier,
   type UnoCard,
   type UnoCardKind,
   type UnoColor,
@@ -20,7 +21,7 @@ import {
   resolveCardShortcutIndex,
 } from '../core/keyboard-nav.js';
 import { colyseus } from '../net/connection-manager.js';
-import { getProfile } from '../state/profile-store.js';
+import { getProfile, patchProfile } from '../state/profile-store.js';
 import {
   loadSettings,
   subscribeSettings,
@@ -115,6 +116,7 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
         <h2 data-role="ended-title">Partita Terminata</h2>
         <p data-role="ended-winner"></p>
         <div class="scores-list" data-role="scores-list"></div>
+        <div class="mcp-rewards-box" data-role="mcp-rewards" hidden></div>
         <div data-role="rematch-status" style="font-size:0.85rem;margin:0.4rem 0;"></div>
         <div class="battle-actions" style="justify-content:center;margin-top:0.6rem;">
           <button type="button" class="launcher-play-btn" data-action="rematch">
@@ -143,8 +145,10 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
   const wildGrid = root.querySelector<HTMLElement>('[data-role="wild-grid"]')!;
   const cancelWildBtn = root.querySelector<HTMLButtonElement>('[data-action="cancel-wild"]')!;
   const endedOverlay = root.querySelector<HTMLElement>('[data-role="ended-overlay"]')!;
+  const endedTitleEl = root.querySelector<HTMLElement>('[data-role="ended-title"]')!;
   const endedWinnerEl = root.querySelector<HTMLElement>('[data-role="ended-winner"]')!;
   const scoresListEl = root.querySelector<HTMLElement>('[data-role="scores-list"]')!;
+  const mcpRewardsEl = root.querySelector<HTMLElement>('[data-role="mcp-rewards"]')!;
   const rematchStatusEl = root.querySelector<HTMLElement>('[data-role="rematch-status"]')!;
   const rematchBtn = root.querySelector<HTMLButtonElement>('[data-action="rematch"]')!;
   const backLobbyBtn = root.querySelector<HTMLButtonElement>('[data-action="back-lobby"]')!;
@@ -216,13 +220,19 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
     colyseus.startMatch();
   });
 
+  let exiting = false;
   const handleExit = async (): Promise<void> => {
+    if (exiting) return;
+    exiting = true;
     exitBtn.disabled = true;
     backLobbyBtn.disabled = true;
     purgeOnClose();
     playEarcon('modal_close');
-    await colyseus.leaveRoom();
-    await opts.onExit();
+    try {
+      await colyseus.leaveRoom();
+    } finally {
+      await opts.onExit();
+    }
   };
 
   exitBtn.addEventListener('click', () => void handleExit());
@@ -323,10 +333,11 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
       endedOverlay.hidden = false;
       const winnerId = endedMessage?.winnerId ?? state.winnerId;
       const winnerName = nameMap.get(winnerId) ?? winnerId;
-      endedWinnerEl.textContent =
-        winnerId === myId
-          ? 'Hai vinto la partita!'
-          : `Vincitore: ${winnerName}`;
+      const iWon = winnerId === myId;
+      endedTitleEl.textContent = iWon ? 'VITTORIA!' : 'PARTITA TERMINATA';
+      endedWinnerEl.textContent = iWon
+        ? 'Hai vinto la partita!'
+        : `Vincitore: ${winnerName}`;
 
       scoresListEl.innerHTML = '';
       if (endedMessage) {
@@ -342,6 +353,32 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
           row.append(nameSpan, ptsSpan);
           scoresListEl.appendChild(row);
         }
+      }
+
+      const myReceipt = endedMessage?.receipts?.[myId];
+      mcpRewardsEl.replaceChildren();
+      if (myReceipt) {
+        mcpRewardsEl.hidden = false;
+        const mmrSign = myReceipt.mmrDelta >= 0 ? `+${myReceipt.mmrDelta}` : String(myReceipt.mmrDelta);
+        const items: Array<[string, string]> = [
+          ['MMR', `${myReceipt.isRanked ? mmrSign : 'Casuale'} (${myReceipt.mmrAfter})`],
+          ['Grado', `${myReceipt.rankAfter}${myReceipt.rankPromoted ? ' · PROMOZIONE!' : ''}`],
+          ['Battle Card', `+${myReceipt.xpEarned} XP (Lv.${myReceipt.battleCardLevelAfter})`],
+          ['V-Card', `+${myReceipt.vcardEarned} (Tot ${myReceipt.vcardBalanceAfter})`],
+          ['Sfide', `+${myReceipt.challengesProgressed} aggiornate`],
+        ];
+        for (const [k, v] of items) {
+          const chip = document.createElement('div');
+          chip.className = 'scores-row';
+          const lbl = document.createElement('span');
+          lbl.textContent = k;
+          const val = document.createElement('strong');
+          val.textContent = v;
+          chip.append(lbl, val);
+          mcpRewardsEl.appendChild(chip);
+        }
+      } else {
+        mcpRewardsEl.hidden = true;
       }
     } else {
       endedOverlay.hidden = true;
@@ -590,6 +627,15 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
 
   const offEnded = colyseus.onMatchEnded((msg) => {
     endedMessage = msg;
+    const myReceipt = msg.receipts?.[myId];
+    if (myReceipt) {
+      patchProfile({
+        mmr: myReceipt.mmrAfter,
+        rankTier: myReceipt.rankAfter as RankTier,
+        vcard: myReceipt.vcardBalanceAfter,
+        battleCardLevel: myReceipt.battleCardLevelAfter,
+      });
+    }
     rematchBtn.disabled = false;
     rematchStatusEl.textContent = '';
     const winnerName = currentState?.players.get(msg.winnerId)?.username ?? msg.winnerId;

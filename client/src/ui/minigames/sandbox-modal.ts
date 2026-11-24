@@ -2,10 +2,17 @@
 // UNO ULTRA Client — 7 Mini-Games Full-Screen Cyber-Arcade Views
 // ============================================================
 
-import { MINI_GAME_ENGINES, type AnyMiniGameMode } from '@uno/shared';
+import {
+  MINI_GAME_ENGINES,
+  type AnyMiniGameMode,
+  type MatchRewardReceipt,
+  type RankTier,
+} from '@uno/shared';
 import { announce, purgeOnClose } from '../../core/aria-live.js';
 import { playEarcon } from '../../core/audio-earcons.js';
 import { hasBlockedModifier } from '../../core/keyboard-nav.js';
+import { settleMiniGameMatch } from '../../net/tcp/rest-client.js';
+import { isAuthenticated, patchProfile } from '../../state/profile-store.js';
 import {
   computeBlackjackTotal,
   findCardActions,
@@ -577,17 +584,26 @@ function renderModeBoard(ctx: RenderBoardContext): HTMLElement {
   }
 }
 
-export function openMiniGameSandboxModal(mode: AnyMiniGameMode): void {
+export function openMiniGameSandboxModal(
+  mode: AnyMiniGameMode,
+  opts: { ranked?: boolean } = {},
+): void {
   const previousStage = document.querySelector('.mg-fs-stage');
   previousStage?.remove();
 
   const previousFocus =
     document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const engine = MINI_GAME_ENGINES[mode];
+  const isRanked = Boolean(opts.ranked);
   const players = Array.from({ length: Math.max(2, engine.minPlayers) }, (_, idx) =>
     idx === 0 ? 'Tu' : `Bot_${idx}`,
   );
-  let state = engine.createInitialState(`local_${mode}`, players, Date.now());
+  let matchSeed = Date.now();
+  let state = engine.createInitialState(`local_${mode}_${matchSeed}`, players, matchSeed);
+  let startedAtMs = Date.now();
+  let turnsPlayed = 0;
+  let settledThisMatch = false;
+  let lastReceipt: MatchRewardReceipt | null = null;
   let selectedCardId: string | null = null;
   let raiseAmount = 40;
 
@@ -660,9 +676,50 @@ export function openMiniGameSandboxModal(mode: AnyMiniGameMode): void {
   document.addEventListener('fullscreenchange', syncFullscreenLabel);
   window.addEventListener('keydown', onKeyDown);
 
+  const triggerMatchSettlement = (): void => {
+    if (settledThisMatch || state.phase !== 'finished') return;
+    settledThisMatch = true;
+    const iWon = state.winnerId === 'Tu';
+    playEarcon(iWon ? 'win' : 'confirm');
+    announce(`Partita terminata. Vincitore: ${state.winnerId ?? 'Pareggio'}.`, 'assertive');
+
+    const myScore = Number(state.scores['Tu'] ?? (iWon ? 100 : 0));
+    const oppScore = Number(state.scores['Bot_1'] ?? (iWon ? 0 : 100));
+    const durationSec = Math.max(1, Math.round((Date.now() - startedAtMs) / 1000));
+
+    if (!isAuthenticated()) return;
+
+    void settleMiniGameMatch({
+      matchId: `${mode}_${matchSeed}`,
+      mode,
+      variant: 'standard',
+      isRanked,
+      won: iWon,
+      score: Math.round(myScore),
+      opponentScore: Math.round(oppScore),
+      turnCount: Math.max(1, turnsPlayed),
+      durationSec,
+      cardsPlayed: Math.max(1, turnsPlayed),
+    })
+      .then(({ receipt }) => {
+        lastReceipt = receipt;
+        patchProfile({
+          mmr: receipt.mmrAfter,
+          rankTier: receipt.rankAfter as RankTier,
+          vcard: receipt.vcardBalanceAfter,
+          battleCardLevel: receipt.battleCardLevelAfter,
+        });
+        paint();
+      })
+      .catch(() => {
+        // Keep local victory screen visible even if offline
+      });
+  };
+
   const runAction = (action: MiniGameActionLike): void => {
     try {
       state = engine.applyAction(state, 'Tu', action);
+      turnsPlayed += 1;
       if (action.type.startsWith('draw')) {
         playEarcon('draw');
       } else {
@@ -685,8 +742,7 @@ export function openMiniGameSandboxModal(mode: AnyMiniGameMode): void {
       }
 
       if (state.phase === 'finished') {
-        playEarcon(state.winnerId === 'Tu' ? 'win' : 'error');
-        announce(`Partita terminata. Vincitore: ${state.winnerId ?? 'Nessuno'}.`, 'assertive');
+        triggerMatchSettlement();
       }
     } catch (err) {
       playEarcon('error');
@@ -728,16 +784,54 @@ export function openMiniGameSandboxModal(mode: AnyMiniGameMode): void {
     viewport.appendChild(board);
 
     if (state.phase === 'finished') {
-      const finishBar = el('div', 'mg-finish-banner');
-      finishBar.appendChild(
-        el('span', 'mg-finish-title', `Vincitore: ${state.winnerId ?? 'Pareggio'}`),
+      const iWon = state.winnerId === 'Tu';
+      const backdrop = el('div', 'mg-victory-backdrop');
+      const card = el('div', iWon ? 'mg-victory-card' : 'mg-victory-card is-defeat');
+      card.append(
+        el('div', 'mg-victory-badge', iWon ? 'VITTORIA!' : 'PARTITA TERMINATA'),
+        el(
+          'p',
+          'mg-victory-sub',
+          iWon
+            ? `Hai dominato a ${engine.label}! ${formatScoreSummary(view)}`
+            : `Vincitore: ${state.winnerId ?? 'Bot_1'} · ${formatScoreSummary(view)}`,
+        ),
       );
+
+      const grid = el('div', 'mg-rewards-grid');
+      const addTile = (label: string, val: string): void => {
+        const tile = el('div', 'mg-reward-tile');
+        tile.append(el('span', undefined, label), el('strong', undefined, val));
+        grid.appendChild(tile);
+      };
+
+      if (lastReceipt) {
+        const deltaStr =
+          lastReceipt.mmrDelta >= 0 ? `+${lastReceipt.mmrDelta}` : String(lastReceipt.mmrDelta);
+        addTile('MMR', lastReceipt.isRanked ? `${deltaStr} (${lastReceipt.mmrAfter})` : `Casuale (${lastReceipt.mmrAfter})`);
+        addTile('Grado', lastReceipt.rankAfter);
+        addTile('Battle Card', `+${lastReceipt.xpEarned} XP (Lv.${lastReceipt.battleCardLevelAfter})`);
+        addTile('V-Card', `+${lastReceipt.vcardEarned} (Tot ${lastReceipt.vcardBalanceAfter})`);
+        addTile('Sfide', `+${lastReceipt.challengesProgressed} aggiornate`);
+      } else if (isAuthenticated()) {
+        addTile('Sincronizzazione', 'Accredito punti MCP in corso…');
+      } else {
+        addTile('Modalità Locale', 'Accedi per salvare MMR, Battle Card e V-Card');
+      }
+      card.appendChild(grid);
+
+      const actionsRow = el('div', 'mg-victory-actions');
       const resetBtn = document.createElement('button');
       resetBtn.type = 'button';
       resetBtn.className = 'mg-neon-btn mg-neon-btn--gold';
       resetBtn.textContent = 'Nuova Mano';
       resetBtn.addEventListener('click', () => {
-        state = engine.createInitialState(`local_${mode}`, players, Date.now());
+        matchSeed = Date.now();
+        startedAtMs = matchSeed;
+        turnsPlayed = 0;
+        settledThisMatch = false;
+        lastReceipt = null;
+        state = engine.createInitialState(`local_${mode}_${matchSeed}`, players, matchSeed);
         selectedCardId = null;
         playEarcon('confirm');
         paint();
@@ -749,8 +843,10 @@ export function openMiniGameSandboxModal(mode: AnyMiniGameMode): void {
       lobbyBtn.textContent = 'Torna alla Lobby';
       lobbyBtn.addEventListener('click', closeStage);
 
-      finishBar.append(resetBtn, lobbyBtn);
-      viewport.appendChild(finishBar);
+      actionsRow.append(resetBtn, lobbyBtn);
+      card.appendChild(actionsRow);
+      backdrop.appendChild(card);
+      viewport.appendChild(backdrop);
     } else if (legal.length === 0) {
       const botBar = el('div', 'mg-action-console');
       const botBtn = document.createElement('button');
@@ -762,6 +858,9 @@ export function openMiniGameSandboxModal(mode: AnyMiniGameMode): void {
         if (cur) {
           const botActs = engine.getLegalActions(state, cur);
           if (botActs.length > 0) state = engine.applyAction(state, cur, botActs[0]);
+        }
+        if (state.phase === 'finished') {
+          triggerMatchSettlement();
         }
         paint();
       });
