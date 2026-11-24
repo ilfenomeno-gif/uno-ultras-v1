@@ -85,7 +85,7 @@ export function createVCardView(): HTMLElement {
 }
 
 export function openMiniGameSandboxModal(mode: AnyMiniGameMode): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const engine = MINI_GAME_ENGINES[mode] as any;
   const players = Array.from({ length: Math.max(2, engine.minPlayers) }, (_, idx) =>
     idx === 0 ? 'Tu' : `Bot_${idx}`,

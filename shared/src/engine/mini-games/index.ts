@@ -24,7 +24,7 @@ import type { MiniGameEngine, MiniGameStateBase } from './mini-game-contract.js'
 
 export type AnyMiniGameMode = Exclude<GameMode, 'uno'>;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 export const MINI_GAME_ENGINES: Record<AnyMiniGameMode, MiniGameEngine<MiniGameStateBase, any>> = {
   blackjack: blackjackEngine,
   scala40: scala40Engine,

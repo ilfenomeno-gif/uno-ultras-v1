@@ -37,7 +37,7 @@ describe('MINI_GAME_ENGINES — all 7 engines deterministic & private-hand safe'
 
   it('never leaks opponent private hands in getPublicView()', () => {
     for (const mode of modes) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       const engine = MINI_GAME_ENGINES[mode] as any;
       const state = engine.createInitialState(`m_${mode}`, ['p1', 'p2'], 42);
       const viewP1 = engine.getPublicView(state, 'p1') as Record<string, unknown>;

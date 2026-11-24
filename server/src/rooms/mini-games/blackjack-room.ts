@@ -51,7 +51,7 @@ export abstract class AbstractMiniGameRoom<
         return;
       }
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         const engine = MINI_GAME_ENGINES[this.mode] as any;
         this.engineState = engine.applyAction(this.engineState, playerId, payload) as TState;
         this.turnCount += 1;
@@ -100,7 +100,7 @@ export abstract class AbstractMiniGameRoom<
   }
 
   protected startMiniGame(): void {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const engine = MINI_GAME_ENGINES[this.mode] as any;
     const participants = [...this.lobbyPlayers];
     while (participants.length < Math.max(engine.minPlayers, this.targetPlayers)) {
@@ -139,7 +139,7 @@ export abstract class AbstractMiniGameRoom<
 
     this.clock.setTimeout(() => {
       if (!this.engineState || this.engineState.phase !== 'playing') return;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       const engine = MINI_GAME_ENGINES[this.mode] as any;
       const legal = engine.getLegalActions(this.engineState, currentId) as TAction[];
       if (legal.length === 0) return;
@@ -153,7 +153,7 @@ export abstract class AbstractMiniGameRoom<
   protected pushViewToPlayer(playerId: string): void {
     const client = this.playerToClient.get(playerId);
     if (!client || !this.engineState) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const engine = MINI_GAME_ENGINES[this.mode] as any;
     this.sendSafe(client, 'minigame_state', engine.getPublicView(this.engineState, playerId));
   }
