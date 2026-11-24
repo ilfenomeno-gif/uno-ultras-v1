@@ -4,7 +4,19 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
-## Sessione 2026-11-24 (Parte 7) — Schermata Carriera a 3 Colonne (Cosmetici, KPI & Cronologia)
+## Sessione 2026-11-24 (Parte 8) — Store Valuta V-Card, Estrazione Mini-Giochi & Dev Grants Sicuri
+
+- **Obiettivo**: riconvertire la scheda `V-Card` nello Store Valuta dedicato ai 4 pacchetti scalari (`500`, `1.000 + 100`, `2.800 + 400`, `6.500 + 1.500`) con artwork SVG e rarità (`rare`, `epic`, `legendary`, `mythic`), spostare i 7 Mini-Giochi in un modulo dedicato lanciabile da `Gioca` e predisporre il servizio di accredito sicuro protetto da `ENABLE_DEV_CURRENCY_GRANTS` (spento di default, bloccato in produzione).
+- **Stato Lavori**:
+  - `[x]` Catalogo `VCARD_PACKS` in `shared/src/types/economy.ts`, gate `ENABLE_DEV_CURRENCY_GRANTS` in `server/src/config/env.ts`, servizio riutilizzabile `fulfillVCardPackGrant` (`admin_grant` + metadata idempotenti) in `server/src/services/currency-grant.ts` ed endpoint `/api/shop/vcard-packs` + `/api/shop/vcard-packs/grant` in `server/src/net/tcp/rest-routes/shop.ts`.
+  - `[x]` Estrazione 7 tavoli visuali Mini-Giochi in `client/src/ui/minigames/sandbox-modal.ts` collegato a `client/src/main.ts` (zero warning Vite).
+  - `[x]` Artwork crescenti in `client/src/ui/navigation/vcard-artworks.ts`, Store `V-Card` in `client/src/ui/navigation/tab-vcard.ts` (saldo live, stato pagamenti onesto `Pagamenti non ancora attivi`, Zero Focus Drop) e stili 4 colonne in `client/src/styles/shop.css`.
+  - `[x]` Test in `client/tests/vcard-store.test.ts` (`3` test) e `npm run ci` verde (`21` suite Vitest / `146` test passati: shared `74`, server `33`, client `39`; `0` errori ESLint/TS) + SHA-256 `contenuto-game.md` intatto (`83CAE3C057B35C22B460CC6F61BCF11AA355D1DB5F9EB4F2EC40517B2A1BD4D9`).
+  - `[x]` Aggiornamento live Docker `uno-server` e `uno-client` con i 5 container operativi.
+
+---
+
+## Sessione 2026-11-24 (Parte 7) — Schermata Carriera a 3 Colonne (Cosmetici, KPI & Cronologia) (`f3369da`)
 
 - **Obiettivo**: progettare la schermata `Carriera` a tre colonne allineata ai cosmetici equipaggiati in Armadietto (`avatar`, `frame`, `title`), progressione verso Supersonic Legend (`1600+ MMR`), griglia statistiche 2×2 ad alta leggibilità e cronologia partite con esito, delta MMR e Replay.
 - **Stato Lavori**:

@@ -169,6 +169,77 @@ export const CATALOG_BY_ID: Readonly<Record<string, CatalogItem>> = Object.fromE
   CATALOG_ITEMS.map((item) => [item.id, item]),
 );
 
+// ── V-Card Currency Store Packs (4 Escalating Tiers) ─────────
+
+export type VCardPackRarity = 'rare' | 'epic' | 'legendary' | 'mythic';
+
+export interface VCardPackDefinition {
+  readonly id: 'vcard_500' | 'vcard_1100' | 'vcard_3200' | 'vcard_8000';
+  readonly title: string;
+  readonly subtitle: string;
+  readonly baseVCard: number;
+  readonly bonusVCard: number;
+  readonly totalVCard: number;
+  readonly priceEurCents: number;
+  readonly priceDisplay: string;
+  readonly rarity: VCardPackRarity;
+  readonly badge?: string;
+}
+
+export const VCARD_PACKS: readonly VCardPackDefinition[] = [
+  {
+    id: 'vcard_500',
+    title: 'Pacchetto Starter',
+    subtitle: 'Ideale per cosmetici Rare o Epic nel Negozio.',
+    baseVCard: 500,
+    bonusVCard: 0,
+    totalVCard: 500,
+    priceEurCents: 499,
+    priceDisplay: '4,99 €',
+    rarity: 'rare',
+  },
+  {
+    id: 'vcard_1100',
+    title: 'Pacchetto Competitivo',
+    subtitle: 'Copre il Battle Card Base (1.000 V-Card) con margine extra.',
+    baseVCard: 1000,
+    bonusVCard: 100,
+    totalVCard: 1100,
+    priceEurCents: 999,
+    priceDisplay: '9,99 €',
+    rarity: 'epic',
+    badge: '+10% BONUS',
+  },
+  {
+    id: 'vcard_3200',
+    title: 'Pacchetto Bundle',
+    subtitle: 'Perfetto per Bundle Battle Card e item Legendary.',
+    baseVCard: 2800,
+    bonusVCard: 400,
+    totalVCard: 3200,
+    priceEurCents: 2499,
+    priceDisplay: '24,99 €',
+    rarity: 'legendary',
+    badge: 'PIÙ SCELTO',
+  },
+  {
+    id: 'vcard_8000',
+    title: 'Forziere Supersonic',
+    subtitle: 'Scorta completa per Mythic, Battle Card e rotazioni stagionali.',
+    baseVCard: 6500,
+    bonusVCard: 1500,
+    totalVCard: 8000,
+    priceEurCents: 4999,
+    priceDisplay: '49,99 €',
+    rarity: 'mythic',
+    badge: 'MIGLIOR VALORE',
+  },
+] as const;
+
+export const VCARD_PACK_BY_ID: Readonly<Record<string, VCardPackDefinition>> = Object.fromEntries(
+  VCARD_PACKS.map((pack) => [pack.id, pack]),
+);
+
 // ── Battle Card (1..100 livelli) ──────────────────────────────
 
 export const BATTLE_CARD_MAX_LEVEL = 100;

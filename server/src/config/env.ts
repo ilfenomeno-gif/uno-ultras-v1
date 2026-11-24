@@ -28,6 +28,12 @@ const EnvSchema = z.object({
   JWT_SECRET: z.string().min(16).default('change_me_min_32_chars_long_secret!!'),
   JWT_EXPIRES_IN: z.string().default('7d'),
   BCRYPT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12),
+
+  // V-Card Currency Store Dev Grants (always blocked in NODE_ENV=production)
+  ENABLE_DEV_CURRENCY_GRANTS: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
 });
 
 export type EnvConfig = z.infer<typeof EnvSchema>;

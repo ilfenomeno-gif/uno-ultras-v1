@@ -357,3 +357,27 @@ export async function cancelMatchmaking(mode: string, ranked: boolean): Promise<
     { method: 'DELETE', headers: authHeaders() },
   );
 }
+
+export async function fetchVCardPacks(): Promise<{
+  packs: readonly Record<string, unknown>[];
+  devGrantsEnabled: boolean;
+  paymentsActive: boolean;
+}> {
+  return requestJson('/shop/vcard-packs', { method: 'GET' });
+}
+
+export async function grantDevVCardPack(
+  packId: 'vcard_500' | 'vcard_1100' | 'vcard_3200' | 'vcard_8000',
+  idempotencyKey?: string,
+): Promise<{
+  vcardAdded: number;
+  vcardAfter: number;
+  deduplicated: boolean;
+  source: 'dev_grant' | 'payment_webhook';
+}> {
+  return postJson(
+    '/shop/vcard-packs/grant',
+    { packId, ...(idempotencyKey !== undefined ? { idempotencyKey } : {}) },
+    true,
+  );
+}

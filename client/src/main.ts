@@ -26,6 +26,7 @@ import { SocialDrawer } from './ui/play/social-drawer.js';
 import type { LauncherConfig } from './ui/play/launcher.js';
 import { createPlayView } from './ui/navigation/tab-play.js';
 import { renderRouteTabView } from './ui/navigation/tab-controller.js';
+import { openMiniGameSandboxModal } from './ui/minigames/sandbox-modal.js';
 import { mountGameView } from './game-view/table.js';
 import { initClientEnvironment } from './core/bootstrap.js';
 import { getProfile, isAuthenticated } from './state/profile-store.js';
@@ -58,7 +59,6 @@ function bootstrap(): void {
 
   const handleLaunch = async (cfg: LauncherConfig): Promise<void> => {
     if (cfg.mode !== 'uno') {
-      const { openMiniGameSandboxModal } = await import('./ui/navigation/tab-vcard.js');
       openMiniGameSandboxModal(cfg.mode);
       return;
     }
