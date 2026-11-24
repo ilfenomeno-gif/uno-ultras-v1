@@ -4,7 +4,17 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
-## Sessione 2026-11-24 (Parte 3) — Armadietto Olografico a 3 Colonne & Riscatto Casse
+## Sessione 2026-11-24 (Parte 4) — Caricamento Sincrono Schede & Error Boundary
+
+- **Obiettivo**: eliminare il rischio di schermate bianche su `Negozio`, `Armadietto`, `Battle Card`, `Sfide`, `Tornei`, `Carriera` e `V-Card` dovute a import dinamici non gestiti o chunk scaduti dopo rebuild/arresto container.
+- **Stato Lavori**:
+  - `[x]` Rimozione dei chunk dinamici senza `.catch()` in `client/src/ui/navigation/tab-controller.ts`: tutte le 8 schede vengono ora importate in modo sincrono con error boundary visivo di fallback.
+  - `[x]` Verifica `npm run ci` verde (`17` suite Vitest / `130` test passati; bundle unificato client `341.81 kB` / `97.60 kB` gzip; `0` errori ESLint/TS) e SHA-256 `contenuto-game.md` intatto (`83CAE3C057B35C22B460CC6F61BCF11AA355D1DB5F9EB4F2EC40517B2A1BD4D9`).
+  - `[x]` Aggiornamento immagine Docker locale `uno-ultra-client:latest` su disco con il bundle unificato.
+
+---
+
+## Sessione 2026-11-24 (Parte 3) — Armadietto Olografico a 3 Colonne & Riscatto Casse (`a7b81d0`)
 
 - **Obiettivo**: progettare la schermata `Armadietto` a tre colonne (menu categorie a sinistra con `Avatar`, `Dorsi Carte`, `Cornici`, `Tavoli`, `Titoli`, `Casse`; vetrina centrale su piedistallo olografico con pulsante dinamico `EQUIPAGGIATO` / `EQUIPAGGIA` / `APRI CASSA`; griglia inventario a destra con cornici e targhette rarità), aggiungere il riscatto a costo `0` delle casse possedute lato server e lo slot `theme` nello store client.
 - **Stato Lavori**:
