@@ -1,0 +1,880 @@
+/* ============================================================
+   UNO ULTRA — Full-Screen Cyber-Arcade Mini-Games (100vw x 100vh)
+   ============================================================ */
+
+.mg-fs-stage {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 950;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  overflow: hidden;
+  color: var(--text-primary, #f4f7ff);
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(0, 229, 255, 0.16), transparent 55%),
+    radial-gradient(ellipse at 15% 85%, rgba(213, 0, 249, 0.14), transparent 50%),
+    radial-gradient(ellipse at 85% 80%, rgba(255, 200, 61, 0.1), transparent 48%),
+    linear-gradient(180deg, #060916 0%, #091126 52%, #050814 100%);
+  font-family: var(--font-ui, 'Inter', system-ui, sans-serif);
+}
+
+.mg-fs-stage::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(rgba(255, 255, 255, 0.25) 1px, transparent 1px),
+    linear-gradient(to right, rgba(0, 229, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 229, 255, 0.04) 1px, transparent 1px);
+  background-size: 90px 90px, 64px 64px, 64px 64px;
+  opacity: 0.45;
+}
+
+/* ---------- Minimal Cyber-Arcade Top HUD ---------- */
+
+.mg-fs-hud {
+  position: relative;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 24px;
+  background: rgba(7, 12, 28, 0.88);
+  border-bottom: 1px solid rgba(0, 229, 255, 0.28);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+.mg-fs-hud-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.mg-fs-brand {
+  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-weight: 900;
+  font-size: 1.05rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, #ffd166 0%, #ff8c00 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  white-space: nowrap;
+}
+
+.mg-fs-title {
+  margin: 0;
+  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-weight: 800;
+  font-size: 1.2rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mg-fs-turn-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 229, 255, 0.45);
+  background: rgba(0, 229, 255, 0.12);
+  font-weight: 700;
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  color: #8df4ff;
+  box-shadow: 0 0 18px rgba(0, 229, 255, 0.18);
+}
+
+.mg-fs-turn-pill.is-finished {
+  border-color: rgba(255, 209, 102, 0.65);
+  background: rgba(255, 209, 102, 0.16);
+  color: #ffe394;
+}
+
+.mg-fs-hud-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mg-fs-score {
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(15, 23, 46, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.mg-fs-hud-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 229, 255, 0.42);
+  background: rgba(11, 22, 48, 0.9);
+  color: #e2f7ff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.mg-fs-hud-btn:hover,
+.mg-fs-hud-btn:focus-visible {
+  transform: translateY(-1px);
+  border-color: #00e5ff;
+  box-shadow: 0 0 14px rgba(0, 229, 255, 0.35);
+  outline: none;
+}
+
+.mg-fs-hud-btn--exit {
+  border-color: rgba(255, 82, 119, 0.55);
+  background: rgba(65, 16, 36, 0.72);
+  color: #ffd5df;
+}
+
+.mg-fs-hud-btn--exit:hover,
+.mg-fs-hud-btn--exit:focus-visible {
+  border-color: #ff4d79;
+  box-shadow: 0 0 16px rgba(255, 77, 121, 0.45);
+}
+
+/* ---------- Main Viewport Container ---------- */
+
+.mg-fs-viewport {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 28px 22px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.mg-board {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.mg-zone-label {
+  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8fd8ff;
+  text-shadow: 0 0 10px rgba(0, 229, 255, 0.35);
+}
+
+.mg-hint-banner {
+  padding: 7px 16px;
+  border-radius: 999px;
+  background: rgba(10, 21, 44, 0.78);
+  border: 1px solid rgba(0, 229, 255, 0.25);
+  font-size: 0.84rem;
+  color: #cbd5e1;
+  text-align: center;
+}
+
+/* ---------- Shared Playing Cards & Fanned Hand ---------- */
+
+.mg-card-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+}
+
+.mg-hand-fan {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  padding: 16px 24px 8px;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.mg-hand-fan .mg-card-el + .mg-card-el {
+  margin-left: -18px;
+}
+
+.mg-hand-fan.is-wide .mg-card-el + .mg-card-el {
+  margin-left: -28px;
+}
+
+.mg-card-el {
+  position: relative;
+  width: 92px;
+  height: 132px;
+  border-radius: 11px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: linear-gradient(160deg, #ffffff 0%, #e9effa 100%);
+  color: #131c31;
+  border: 2px solid rgba(148, 163, 184, 0.75);
+  box-shadow:
+    0 12px 26px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.85);
+  flex-shrink: 0;
+  user-select: none;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.mg-card-el.is-red {
+  color: #c81e3d;
+}
+
+.mg-card-el.is-playable {
+  cursor: pointer;
+}
+
+.mg-card-el.is-playable:hover,
+.mg-card-el.is-playable:focus-visible {
+  transform: translateY(-14px) scale(1.05);
+  border-color: #00e5ff;
+  box-shadow:
+    0 18px 34px rgba(0, 0, 0, 0.65),
+    0 0 22px rgba(0, 229, 255, 0.6);
+  z-index: 10;
+  outline: none;
+}
+
+.mg-card-el.is-selected {
+  transform: translateY(-16px) scale(1.06);
+  border-color: #ffd166;
+  box-shadow:
+    0 20px 36px rgba(0, 0, 0, 0.72),
+    0 0 26px rgba(255, 209, 102, 0.75);
+  z-index: 12;
+}
+
+.mg-card-el.is-italian {
+  background: linear-gradient(165deg, #fffdf5 0%, #f7ebd2 100%);
+  border-color: rgba(212, 163, 72, 0.8);
+}
+
+.mg-card-el--lg {
+  width: 112px;
+  height: 158px;
+}
+
+.mg-card-corner {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1;
+  font-weight: 900;
+  font-size: 1.05rem;
+}
+
+.mg-card-corner--bot {
+  align-items: flex-end;
+  transform: rotate(180deg);
+}
+
+.mg-card-center {
+  align-self: center;
+  font-size: 2.15rem;
+  line-height: 1;
+}
+
+.mg-card-back {
+  width: 92px;
+  height: 132px;
+  border-radius: 11px;
+  border: 2px solid rgba(0, 229, 255, 0.75);
+  background:
+    radial-gradient(circle at 50% 45%, rgba(0, 229, 255, 0.42), transparent 62%),
+    linear-gradient(145deg, #102552 0%, #1c1045 100%);
+  box-shadow:
+    0 12px 26px rgba(0, 0, 0, 0.55),
+    0 0 20px rgba(0, 229, 255, 0.35);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-weight: 800;
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #b8f6ff;
+  flex-shrink: 0;
+}
+
+.mg-card-back--clickable {
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.mg-card-back--clickable:hover,
+.mg-card-back--clickable:focus-visible {
+  transform: translateY(-6px);
+  box-shadow:
+    0 16px 32px rgba(0, 0, 0, 0.65),
+    0 0 28px rgba(0, 229, 255, 0.65);
+  outline: none;
+}
+
+.mg-empty-slot {
+  width: 92px;
+  height: 132px;
+  border-radius: 11px;
+  border: 2px dashed rgba(0, 229, 255, 0.3);
+  background: rgba(8, 17, 39, 0.45);
+  display: grid;
+  place-items: center;
+  color: rgba(148, 163, 184, 0.75);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ---------- Action Console & Finished Overlay ---------- */
+
+.mg-action-console {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 22px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(16, 29, 61, 0.88), rgba(8, 15, 34, 0.94));
+  border: 1px solid rgba(0, 229, 255, 0.32);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+
+.mg-neon-btn {
+  padding: 11px 24px;
+  border-radius: 999px;
+  border: 2px solid #00e5ff;
+  background: linear-gradient(180deg, rgba(0, 229, 255, 0.22), rgba(0, 140, 205, 0.24));
+  color: #ffffff;
+  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-weight: 800;
+  font-size: 1rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 0 18px rgba(0, 229, 255, 0.28);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, opacity 0.16s ease;
+}
+
+.mg-neon-btn:hover:not([aria-disabled='true']),
+.mg-neon-btn:focus-visible:not([aria-disabled='true']) {
+  transform: translateY(-2px);
+  box-shadow: 0 0 26px rgba(0, 229, 255, 0.62);
+  outline: none;
+}
+
+.mg-neon-btn--gold {
+  border-color: #ffd166;
+  background: linear-gradient(180deg, rgba(255, 209, 102, 0.26), rgba(217, 130, 15, 0.26));
+  color: #fff6d6;
+  box-shadow: 0 0 18px rgba(255, 209, 102, 0.3);
+}
+
+.mg-neon-btn--magenta {
+  border-color: #ff4da6;
+  background: linear-gradient(180deg, rgba(255, 77, 166, 0.25), rgba(173, 20, 118, 0.26));
+  box-shadow: 0 0 18px rgba(255, 77, 166, 0.3);
+}
+
+.mg-neon-btn--violet {
+  border-color: #b469ff;
+  background: linear-gradient(180deg, rgba(180, 105, 255, 0.26), rgba(102, 34, 184, 0.26));
+  box-shadow: 0 0 18px rgba(180, 105, 255, 0.3);
+}
+
+.mg-neon-btn[aria-disabled='true'] {
+  opacity: 0.42;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.mg-finish-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 14px 26px;
+  border-radius: 16px;
+  border: 2px solid #ffd166;
+  background: linear-gradient(135deg, rgba(46, 30, 9, 0.92), rgba(14, 22, 48, 0.95));
+  box-shadow: 0 0 32px rgba(255, 209, 102, 0.32);
+}
+
+.mg-finish-title {
+  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #ffe394;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ---------- 1. Blackjack 21 Semicircular Table ---------- */
+
+.mg-board--blackjack {
+  justify-content: space-between;
+}
+
+.mg-bj-arc {
+  width: min(880px, 95vw);
+  padding: 24px 32px 32px;
+  border-radius: 0 0 420px 420px;
+  border: 2px solid rgba(0, 229, 255, 0.55);
+  border-top: none;
+  background: radial-gradient(ellipse at 50% 0%, rgba(0, 229, 255, 0.2), rgba(7, 22, 46, 0.85) 72%);
+  box-shadow:
+    0 20px 55px rgba(0, 229, 255, 0.18),
+    inset 0 -12px 30px rgba(0, 229, 255, 0.14);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.mg-bj-console {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  padding: 16px 34px;
+  border-radius: 28px 28px 12px 12px;
+  background: linear-gradient(180deg, rgba(17, 28, 56, 0.92), rgba(8, 14, 30, 0.98));
+  border: 1px solid rgba(0, 229, 255, 0.35);
+}
+
+.mg-bj-orb-btn {
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-weight: 900;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ffffff;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.mg-bj-orb-btn:hover,
+.mg-bj-orb-btn:focus-visible {
+  transform: scale(1.07);
+  outline: none;
+}
+
+.mg-bj-orb-btn--hit {
+  border: 3px solid #00e5ff;
+  background: radial-gradient(circle, rgba(0, 229, 255, 0.32), rgba(8, 28, 52, 0.92));
+  box-shadow: 0 0 28px rgba(0, 229, 255, 0.55);
+}
+
+.mg-bj-orb-btn--stand {
+  border: 3px solid #ff4da6;
+  background: radial-gradient(circle, rgba(255, 77, 166, 0.32), rgba(42, 10, 38, 0.92));
+  box-shadow: 0 0 28px rgba(255, 77, 166, 0.55);
+}
+
+.mg-bj-orb-btn--double {
+  border: 3px solid #b469ff;
+  background: radial-gradient(circle, rgba(180, 105, 255, 0.34), rgba(28, 12, 58, 0.92));
+  box-shadow: 0 0 28px rgba(180, 105, 255, 0.55);
+}
+
+/* ---------- 2 & 5. Scala 40 & Burraco Felt Tables ---------- */
+
+.mg-felt-surface {
+  width: min(1160px, 96vw);
+  padding: 20px 28px;
+  border-radius: 24px;
+  border: 2px solid rgba(0, 229, 255, 0.36);
+  background: radial-gradient(ellipse at 50% 40%, rgba(16, 48, 86, 0.72), rgba(7, 17, 38, 0.9));
+  box-shadow:
+    0 22px 48px rgba(0, 0, 0, 0.6),
+    inset 0 0 36px rgba(0, 229, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+.mg-piles-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 36px;
+}
+
+.mg-pile-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.mg-melds-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 112px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(6, 12, 28, 0.52);
+  border: 1px dashed rgba(0, 229, 255, 0.25);
+}
+
+.mg-meld-group {
+  display: flex;
+  padding: 4px;
+  border-radius: 10px;
+  background: rgba(0, 229, 255, 0.08);
+  border: 1px solid rgba(0, 229, 255, 0.28);
+}
+
+.mg-meld-group .mg-card-el {
+  width: 68px;
+  height: 98px;
+  padding: 5px;
+}
+
+.mg-meld-group .mg-card-el + .mg-card-el {
+  margin-left: -20px;
+}
+
+.mg-meld-group .mg-card-center {
+  font-size: 1.45rem;
+}
+
+/* ---------- 3. Scopa & Ruba Mazzetto Table ---------- */
+
+.mg-board--italian {
+  justify-content: space-between;
+}
+
+.mg-italian-rim {
+  width: min(1040px, 95vw);
+  padding: 26px 32px;
+  border-radius: 36px;
+  border: 3px solid rgba(112, 232, 255, 0.65);
+  background: radial-gradient(ellipse at 50% 50%, rgba(16, 44, 78, 0.78), rgba(7, 16, 36, 0.94));
+  box-shadow:
+    0 0 38px rgba(0, 229, 255, 0.2),
+    inset 0 0 34px rgba(0, 229, 255, 0.14);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.mg-italian-stats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px;
+}
+
+.mg-stat-chip {
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(9, 19, 41, 0.85);
+  border: 1px solid rgba(255, 209, 102, 0.45);
+  color: #ffe8a8;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+/* ---------- 4. Poker Texas Hold'em VIP Oval ---------- */
+
+.mg-poker-oval {
+  width: min(1140px, 95vw);
+  padding: 28px 36px;
+  border-radius: 180px;
+  border: 4px solid rgba(255, 209, 102, 0.68);
+  background: radial-gradient(ellipse at 50% 50%, rgba(28, 35, 58, 0.92), rgba(9, 13, 26, 0.96));
+  box-shadow:
+    0 0 42px rgba(255, 209, 102, 0.22),
+    inset 0 0 36px rgba(0, 229, 255, 0.12);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.mg-poker-community {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 18px;
+  border-radius: 16px;
+  background: rgba(8, 13, 28, 0.72);
+  border: 1px solid rgba(255, 209, 102, 0.35);
+}
+
+.mg-poker-pot {
+  padding: 8px 22px;
+  border-radius: 999px;
+  border: 1px solid #ffd166;
+  background: linear-gradient(135deg, rgba(255, 209, 102, 0.24), rgba(184, 114, 14, 0.22));
+  color: #ffea9f;
+  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-weight: 900;
+  font-size: 1.1rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mg-poker-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #cbd5e1;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.mg-poker-slider-row input[type='range'] {
+  accent-color: #00e5ff;
+  width: 170px;
+  cursor: pointer;
+}
+
+/* ---------- 6. Mille Miglia 1000 Dual Neon Tracks ---------- */
+
+.mg-mille-tracks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+  width: min(1240px, 96vw);
+}
+
+.mg-mille-lane {
+  padding: 18px 22px;
+  border-radius: 20px;
+  background: rgba(8, 17, 38, 0.82);
+  border: 2px solid rgba(0, 229, 255, 0.48);
+  box-shadow: 0 0 28px rgba(0, 229, 255, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mg-mille-lane.is-bot {
+  border-color: rgba(255, 64, 160, 0.52);
+  box-shadow: 0 0 28px rgba(255, 64, 160, 0.14);
+}
+
+.mg-mille-lane-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-weight: 800;
+  font-size: 1.15rem;
+  letter-spacing: 0.08em;
+}
+
+.mg-mille-km {
+  color: #8df4ff;
+}
+
+.mg-mille-lane.is-bot .mg-mille-km {
+  color: #ff9fd2;
+}
+
+.mg-mille-track-bar {
+  position: relative;
+  height: 14px;
+  border-radius: 999px;
+  background: rgba(15, 28, 56, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  overflow: hidden;
+}
+
+.mg-mille-track-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #0095ff, #00f0ff);
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.8);
+  transition: width 0.3s ease;
+}
+
+.mg-mille-lane.is-bot .mg-mille-track-fill {
+  background: linear-gradient(90deg, #b81fff, #ff4da6);
+  box-shadow: 0 0 16px rgba(255, 77, 166, 0.8);
+}
+
+.mg-mille-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 0.82rem;
+}
+
+.mg-mille-pill {
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: rgba(15, 32, 66, 0.9);
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  color: #dbeafe;
+  font-weight: 700;
+}
+
+.mg-mille-pill.is-hazard {
+  border-color: rgba(255, 82, 119, 0.65);
+  background: rgba(88, 16, 36, 0.72);
+  color: #ffd0db;
+}
+
+.mg-mille-card {
+  width: 148px;
+  height: 196px;
+  border-radius: 14px;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+  background: linear-gradient(170deg, rgba(16, 28, 56, 0.96), rgba(7, 13, 28, 0.98));
+  color: #f8fafc;
+  border: 2px solid #00e5ff;
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.55);
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.mg-mille-card--distance {
+  border-color: #22c55e;
+  box-shadow: 0 10px 24px rgba(34, 197, 94, 0.22);
+}
+
+.mg-mille-card--hazard {
+  border-color: #ef4444;
+  box-shadow: 0 10px 24px rgba(239, 68, 68, 0.24);
+}
+
+.mg-mille-card--remedy {
+  border-color: #f59e0b;
+  box-shadow: 0 10px 24px rgba(245, 158, 11, 0.22);
+}
+
+.mg-mille-card--safety {
+  border-color: #00e5ff;
+  box-shadow: 0 10px 24px rgba(0, 229, 255, 0.26);
+}
+
+.mg-mille-card:hover,
+.mg-mille-card:focus-visible {
+  transform: translateY(-10px);
+  outline: none;
+}
+
+.mg-mille-card.is-selected {
+  transform: translateY(-14px) scale(1.04);
+  box-shadow: 0 0 28px rgba(255, 209, 102, 0.72);
+  border-color: #ffd166;
+}
+
+.mg-mille-card-title {
+  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-weight: 800;
+  font-size: 0.98rem;
+  line-height: 1.15;
+}
+
+.mg-mille-card-icon {
+  font-size: 2.5rem;
+}
+
+.mg-mille-card-badge {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+/* ---------- Reduced Motion & Responsive ---------- */
+
+@media (max-width: 780px) {
+  .mg-fs-hud {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+    gap: 8px;
+    padding: 10px 14px;
+  }
+
+  .mg-fs-hud-right {
+    justify-content: center;
+  }
+
+  .mg-card-el {
+    width: 72px;
+    height: 104px;
+  }
+
+  .mg-mille-card {
+    width: 118px;
+    height: 158px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mg-card-el,
+  .mg-card-back--clickable,
+  .mg-mille-card,
+  .mg-neon-btn,
+  .mg-bj-orb-btn,
+  .mg-fs-hud-btn,
+  .mg-mille-track-fill {
+    transition: none !important;
+  }
+}

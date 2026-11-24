@@ -4,7 +4,19 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
-## Sessione 2026-11-24 (Parte 8) — Store Valuta V-Card, Estrazione Mini-Giochi & Dev Grants Sicuri
+## Sessione 2026-11-24 (Parte 9) — 7 Mini-Giochi a Schermo Intero Cyber-Arcade (`100vw × 100vh`)
+
+- **Obiettivo**: convertire tutti e 7 i tavoli dei mini-giochi (`Blackjack 21`, `Scala 40`, `Scopa Classica`, `Ruba Mazzetto`, `Poker Texas Hold'em`, `Burraco Online`, `Mille Miglia 1000`) da piccoli popup modali centrati a vere schermate a schermo intero (`100vw × 100vh`) con HUD superiore minimale (`requestFullscreen()`, `Esci`, punteggi live), interazione diretta sulle carte ed etichette naturali in italiano.
+- **Stato Lavori**:
+  - `[x]` Helper puri in `client/src/ui/minigames/minigame-helpers.ts` (`formatMiniGameActionLabel`, `findCardActions`, `formatStandardCardLabel`, `formatMilleCardMeta`, `formatMilleHazardLabel`, `computeBlackjackTotal`, `formatScoreSummary`) con zero stringhe interne `draw_stock` / `play_safety(...)` esposte.
+  - `[x]` Foglio di stile dedicato `client/src/styles/minigames.css` importato in `client/src/main.ts`: plance dedicate (tavolo semicircolare Blackjack con pulsanti circolari neon, feltro Scala 40 con ventaglio 13 carte, tavolo tradizionale neon Scopa/Ruba Mazzetto, ovale VIP Poker con slider raise e 5 slot Community, plancia Burraco con Pozzetti e Calate/Burraco, doppia pista luminosa Mille Miglia `0/1000 km`).
+  - `[x]` Refactoring completo di `client/src/ui/minigames/sandbox-modal.ts` in overlay full-screen `.mg-fs-stage` (`100vw × 100vh`), supporto Browser Fullscreen API, click diretto sulle carte in mano/mazzo/scarti, Zero Focus Drop (`aria-disabled`), `AriaLiveOrchestrator`, earcons ed uscita pulita con `ESC`.
+  - `[x]` Test dedicati in `client/tests/minigames-ui.test.ts` (`5` test) e `npm run ci` verde (`22` suite Vitest / `151` test passati: shared `74`, server `33`, client `44`; `0` errori ESLint/TS; Vite `174` moduli) + SHA-256 `contenuto-game.md` intatto (`83CAE3C057B35C22B460CC6F61BCF11AA355D1DB5F9EB4F2EC40517B2A1BD4D9`).
+  - `[ ]` Aggiornamento container Docker `uno-client` da eseguire al prossimo avvio di Docker Desktop (`DOCKER_NOT_RUNNING` al momento del check passivo).
+
+---
+
+## Sessione 2026-11-24 (Parte 8) — Store Valuta V-Card, Estrazione Mini-Giochi & Dev Grants Sicuri (`1e0b35a`)
 
 - **Obiettivo**: riconvertire la scheda `V-Card` nello Store Valuta dedicato ai 4 pacchetti scalari (`500`, `1.000 + 100`, `2.800 + 400`, `6.500 + 1.500`) con artwork SVG e rarità (`rare`, `epic`, `legendary`, `mythic`), spostare i 7 Mini-Giochi in un modulo dedicato lanciabile da `Gioca` e predisporre il servizio di accredito sicuro protetto da `ENABLE_DEV_CURRENCY_GRANTS` (spento di default, bloccato in produzione).
 - **Stato Lavori**:

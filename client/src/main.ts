@@ -11,6 +11,7 @@ import './styles/social.css';
 import './styles/game.css';
 import './styles/shop.css';
 import './styles/tournaments.css';
+import './styles/minigames.css';
 
 import { Router, type AppRoute } from './core/router.js';
 import { announce, purgeOnClose } from './core/aria-live.js';
