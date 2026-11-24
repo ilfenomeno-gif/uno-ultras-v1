@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+dist
+**/dist
+*.tsbuildinfo
+**/*.tsbuildinfo
+.git
+.github
+.vscode
+*.log
+coverage
+docs
+config/*.env

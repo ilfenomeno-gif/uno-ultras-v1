@@ -1,0 +1,21 @@
+services:
+  server:
+    build:
+      target: production
+    restart: always
+    environment:
+      NODE_ENV: production
+
+  client:
+    build:
+      target: production
+    restart: always
+
+  postgres:
+    restart: always
+
+  redis:
+    restart: always
+
+  coturn:
+    restart: always

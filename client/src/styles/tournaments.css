@@ -1,0 +1,80 @@
+/* ============================================================
+   UNO ULTRA — Tournaments, Brackets & Tables Styles
+   ============================================================ */
+
+.tournament-bracket {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
+  gap: 1rem;
+  overflow-x: auto;
+  padding: 0.5rem 0;
+}
+
+.bracket-wing {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border-radius: 12px;
+}
+
+.bracket-wing h4 {
+  margin: 0;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #00f0ff;
+}
+
+.bracket-match {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.6rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.bracket-slot {
+  font-size: 0.85rem;
+  padding: 0.25rem 0.4rem;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.bracket-slot.winner {
+  border-left: 3px solid #ffd500;
+  color: #ffd500;
+  font-weight: 700;
+}
+
+.bracket-vs {
+  font-size: 0.7rem;
+  opacity: 0.65;
+  text-align: center;
+}
+
+.tournament-shop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 1rem;
+}
+
+.ultra-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.ultra-table th,
+.ultra-table td {
+  padding: 0.55rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.challenger-list {
+  padding: 0.75rem;
+  border-radius: 12px;
+  overflow-x: auto;
+}

@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.pnp
+
+# Builds
+dist/
+build/
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+config/*.env
+!config/*.env.example
+
+# Docker runtime data
+.docker-data/
+pgdata/
+redisdata/
+
+# Certificates
+certs/*.pem
+certs/*.key
+*.crt
+*.key
+!.gitkeep
+
+# Coverage & test output
+coverage/
+test-results/
+playwright-report/
+
+# IDE
+.idea/
+*.swp
+.DS_Store

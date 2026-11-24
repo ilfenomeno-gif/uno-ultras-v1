@@ -1,0 +1,33 @@
+{
+  "name": "uno-ultra-game",
+  "version": "0.1.0",
+  "private": true,
+  "description": "UNO ULTRA — Competitive card game monorepo (TCP+UDP)",
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
+  "engines": {
+    "node": ">=24.0.0",
+    "npm": ">=11.0.0"
+  },
+  "scripts": {
+    "dev": "npm run dev --workspace=server & npm run dev --workspace=client",
+    "build": "npm run build --workspace=shared && npm run build --workspace=server && npm run build --workspace=client",
+    "test": "npm run test --workspace=shared && npm run test --workspace=server",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --write .",
+    "clean": "rimraf node_modules shared/dist server/dist client/dist",
+    "docker:dev": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build",
+    "docker:down": "docker compose -f docker-compose.yml -f docker-compose.dev.yml down"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "eslint": "^9.16.0",
+    "prettier": "^3.4.0",
+    "rimraf": "^6.0.0",
+    "typescript": "^5.7.0"
+  }
+}

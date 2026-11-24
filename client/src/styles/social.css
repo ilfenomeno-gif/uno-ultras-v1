@@ -1,0 +1,219 @@
+/* ============================================================
+   UNO ULTRA — Social Drawer & Public Profile Modal Styles
+   ============================================================ */
+
+.social-user-banner {
+  padding: 0.55rem 0.75rem;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 188, 212, 0.1);
+  border: 1px solid rgba(0, 188, 212, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.social-user-banner strong {
+  color: var(--color-gold);
+}
+
+.social-section-title {
+  margin-top: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-text-muted);
+}
+
+.social-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.social-row-info {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.social-name-btn {
+  text-align: left;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.social-name-btn:hover {
+  color: var(--color-cyan);
+  text-decoration: underline;
+}
+
+.social-meta {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+}
+
+.presence-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.presence-dot.online {
+  background: var(--color-success);
+  box-shadow: 0 0 8px rgba(46, 213, 115, 0.85);
+}
+
+.presence-dot.ingame {
+  background: var(--color-gold);
+  box-shadow: 0 0 8px var(--color-gold-glow);
+}
+
+.presence-dot.offline {
+  background: #5c667d;
+}
+
+.social-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.social-mini-btn {
+  padding: 0.3rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid var(--glass-border);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--color-cyan);
+  transition: background 0.15s ease;
+}
+
+.social-mini-btn:hover {
+  background: rgba(0, 188, 212, 0.16);
+}
+
+.social-mini-btn--gold {
+  border-color: var(--glass-border-gold);
+  color: var(--color-gold);
+}
+
+.social-mini-btn--danger {
+  border-color: rgba(255, 71, 87, 0.4);
+  color: #ff8a9a;
+}
+
+.social-add-form {
+  margin-top: auto;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  gap: 0.45rem;
+}
+
+.social-add-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-border);
+  background: rgba(0, 0, 0, 0.4);
+  color: var(--color-text);
+  font-size: 0.85rem;
+}
+
+.social-add-submit {
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-gold);
+  color: #07090f;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.78rem;
+}
+
+.social-feedback {
+  min-height: 1.1rem;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--color-cyan);
+}
+
+.social-feedback.is-error {
+  color: #ff8a9a;
+}
+
+/* ── Profile Inspection Modal ─────────────────────────────── */
+.profile-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  background: rgba(3, 6, 15, 0.78);
+  backdrop-filter: blur(8px);
+}
+
+.profile-modal {
+  width: min(380px, 90vw);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.profile-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.profile-modal-header h3 {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  color: var(--color-gold);
+}
+
+.profile-stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+}
+
+.profile-stat-box {
+  padding: 0.65rem;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.profile-stat-box small {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+}
+
+.profile-stat-box strong {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  color: #fff;
+}

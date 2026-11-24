@@ -1,0 +1,27 @@
+services:
+  server:
+    build:
+      target: development
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+    volumes:
+      - ./server:/app/server:cached
+      - ./shared:/app/shared:cached
+      - /app/node_modules
+      - /app/server/node_modules
+      - /app/shared/node_modules
+    command: ["npm", "run", "dev", "--workspace=server"]
+
+  client:
+    build:
+      target: development
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./client:/app/client:cached
+      - ./shared:/app/shared:cached
+      - /app/node_modules
+      - /app/client/node_modules
+      - /app/shared/node_modules
+    command: ["npm", "run", "dev", "--workspace=client", "--", "--host", "0.0.0.0"]

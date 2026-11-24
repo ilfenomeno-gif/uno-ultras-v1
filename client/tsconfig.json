@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": false,
+    "types": ["vite/client"]
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"],
+  "references": [{ "path": "../shared" }]
+}

@@ -1,0 +1,41 @@
+/* ============================================================
+   UNO ULTRA — Design Tokens & Glassmorphism Variables
+   ============================================================ */
+
+:root {
+  /* Palette core */
+  --color-bg: #05070d;
+  --color-bg-elevated: #0b1020;
+  --color-gold: #f5c842;
+  --color-gold-glow: rgba(245, 200, 66, 0.55);
+  --color-cyan: #00bcd4;
+  --color-cyan-glow: rgba(0, 188, 212, 0.5);
+  --color-magenta: #ff2e88;
+  --color-danger: #ff4757;
+  --color-success: #2ed573;
+
+  /* Testo */
+  --color-text: #f1f5ff;
+  --color-text-muted: #8a97b8;
+
+  /* Glassmorphism */
+  --glass-bg: rgba(12, 18, 34, 0.74);
+  --glass-bg-strong: rgba(8, 13, 26, 0.88);
+  --glass-border: rgba(0, 188, 212, 0.28);
+  --glass-border-gold: rgba(245, 200, 66, 0.45);
+  --glass-blur: blur(14px);
+
+  /* Tipografia */
+  --font-display: 'Syne', sans-serif;
+  --font-body: 'DM Sans', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+
+  /* Layout */
+  --topbar-height: 60px;
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+
+  /* Transizioni */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
