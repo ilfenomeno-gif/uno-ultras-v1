@@ -4,7 +4,18 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
-## Sessione 2026-11-24 (Parte 5) — Schermata Sfide Stagionale, Filtri Temporali & Ricompense
+## Sessione 2026-11-24 (Parte 6) — Schermata Tornei, Banner UCS Weekend & Casse Crediti Torneo
+
+- **Obiettivo**: implementare la schermata `Tornei` con banner evento principale (`TORNEO UCS WEEKEND` e conto alla rovescia), griglia tornei programmati per fascia (`Bronzo`, `Arena`, `SSL`), cassa adattiva al grado attuale e riscatto delle Casse Torneo con `Crediti Torneo` anche lato server.
+- **Stato Lavori**:
+  - `[x]` Supporto `tournament_credits` (oltre a copia posseduta a costo `0` o `vcard`) in `openCatalogCrate` su `server/src/persistence/postgres/repositories/inventory.ts`, `server/src/net/tcp/rest-routes/shop.ts` e `client/src/net/tcp/rest-client.ts`.
+  - `[x]` Helper puri in `client/src/ui/tournament/tournament-helpers.ts`, pannello casse con artwork SVG e Crediti Torneo in `client/src/ui/tournament/tournament-shop.ts`, nuova vista in `client/src/ui/navigation/tab-tournaments.ts` e stili in `client/src/styles/tournaments.css`.
+  - `[x]` Test in `client/tests/tournaments-state.test.ts` (`4` test) e `npm run ci` verde (`19` suite Vitest / `139` test passati: shared `74`, server `33`, client `32`; `0` errori ESLint/TS) + SHA-256 `contenuto-game.md` intatto (`83CAE3C057B35C22B460CC6F61BCF11AA355D1DB5F9EB4F2EC40517B2A1BD4D9`).
+  - `[x]` Aggiornamento live immagini e container Docker (`uno-server` con `shared/dist`, `server/dist`, `0009_seasonal_challenges.sql`, e `uno-client` con bundle unificato `index-BOFfUj4P.js`); tutti i 5 container operativi.
+
+---
+
+## Sessione 2026-11-24 (Parte 5) — Schermata Sfide Stagionale, Filtri Temporali & Ricompense (`ccd9136`)
 
 - **Obiettivo**: progettare la schermata `Sfide` coerente con lo sfondo stellato di UNO ULTRA, dotata di banner stagionale (`STAGIONE 1 ATTIVA — Scala la classifica fino a Supersonic Legend (1600+ MMR)!`), filtri temporali `Giornalieri` / `Settimanali` / `Stagionali` e card con progresso, chip XP / V-Card e pulsante `Riscatta`.
 - **Stato Lavori**:

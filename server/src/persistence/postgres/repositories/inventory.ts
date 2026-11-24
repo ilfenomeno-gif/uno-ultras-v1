@@ -36,6 +36,8 @@ export interface CrateOpenResult {
   duplicate: boolean;
   refundVCard: number;
   vcardAfter: number;
+  tournamentCreditsAfter: number;
+  currencyUsed: 'owned_crate' | 'tournament_credits' | 'vcard';
 }
 
 export async function getPlayerInventory(playerId: string): Promise<InventoryItemRow[]> {
@@ -205,10 +207,11 @@ export async function grantInventoryItem(
   return { quantityAfter: res.rows[0]?.quantity ?? 1, duplicate };
 }
 
-/** Apre una cassa torneo (100/500/1000 V-Card) generando drop pesato per rarita. */
+/** Apre una cassa torneo (100/500/1000) consumando copia posseduta, Crediti Torneo o V-Card. */
 export async function openCatalogCrate(
   playerId: string,
   crateId: 'crate_bronze_100' | 'crate_silver_500' | 'crate_ssl_1000',
+  preferredCurrency: 'tournament_credits' | 'vcard' = 'tournament_credits',
 ): Promise<CrateOpenResult> {
   const crate = CATALOG_BY_ID[crateId];
   if (!crate) throw new Error(`Cassa non valida: ${crateId}`);
@@ -229,12 +232,14 @@ export async function openCatalogCrate(
   const client = await pgPool.connect();
   try {
     await client.query('BEGIN');
-    const lockRes = await client.query<{ vcard: number }>(
-      `SELECT vcard FROM players WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+    const lockRes = await client.query<{ vcard: number; tournament_credits: number }>(
+      `SELECT vcard, tournament_credits FROM players WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
       [playerId],
     );
-    const cur = lockRes.rows[0]?.vcard;
-    if (cur === undefined) throw new Error(`Player ${playerId} not found`);
+    const playerRow = lockRes.rows[0];
+    if (!playerRow) throw new Error(`Player ${playerId} not found`);
+    const curVCard = Number(playerRow.vcard);
+    const curCredits = Number(playerRow.tournament_credits);
 
     const ownedCrateRes = await client.query<{ quantity: number }>(
       `SELECT quantity FROM player_inventory WHERE player_id = $1 AND item_id = $2 FOR UPDATE`,
@@ -242,10 +247,16 @@ export async function openCatalogCrate(
     );
     const ownedCrateQty = ownedCrateRes.rows[0]?.quantity ?? 0;
     const redeemOwnedCrate = ownedCrateQty >= 1;
+    const currencyUsed: CrateOpenResult['currencyUsed'] = redeemOwnedCrate
+      ? 'owned_crate'
+      : preferredCurrency;
     const crateCost = redeemOwnedCrate ? 0 : crate.priceVCard;
 
-    if (Number(cur) < crateCost) {
-      throw new InsufficientFundsError('vcard', crateCost, Number(cur));
+    if (currencyUsed === 'tournament_credits' && curCredits < crateCost) {
+      throw new InsufficientFundsError('tournament_credits', crateCost, curCredits);
+    }
+    if (currencyUsed === 'vcard' && curVCard < crateCost) {
+      throw new InsufficientFundsError('vcard', crateCost, curVCard);
     }
 
     if (redeemOwnedCrate) {
@@ -270,12 +281,16 @@ export async function openCatalogCrate(
     );
     const duplicate = (ownedRes.rows[0]?.quantity ?? 0) > 0;
     const refund = duplicate ? dropped.duplicateRefundVCard : 0;
-    const vcardAfter = Number(cur) - crateCost + refund;
 
-    await client.query(`UPDATE players SET vcard = $1, updated_at = NOW() WHERE id = $2`, [
-      vcardAfter,
-      playerId,
-    ]);
+    const vcardAfter =
+      currencyUsed === 'vcard' ? curVCard - crateCost + refund : curVCard + refund;
+    const tournamentCreditsAfter =
+      currencyUsed === 'tournament_credits' ? curCredits - crateCost : curCredits;
+
+    await client.query(
+      `UPDATE players SET vcard = $1, tournament_credits = $2, updated_at = NOW() WHERE id = $3`,
+      [vcardAfter, tournamentCreditsAfter, playerId],
+    );
     await client.query(
       `INSERT INTO player_inventory (player_id, item_id, category, quantity)
        VALUES ($1, $2, $3, 1)
@@ -283,20 +298,35 @@ export async function openCatalogCrate(
        DO UPDATE SET quantity = player_inventory.quantity + 1, updated_at = NOW()`,
       [playerId, dropped.id, dropped.category],
     );
+
+    const txCurrency = currencyUsed === 'tournament_credits' ? 'tournament_credits' : 'vcard';
+    const txDelta = currencyUsed === 'tournament_credits' ? -crateCost : -crateCost + refund;
+    const txBalanceAfter =
+      currencyUsed === 'tournament_credits' ? tournamentCreditsAfter : vcardAfter;
+
     await client.query(
       `INSERT INTO economy_transactions
          (player_id, tx_type, currency, amount_delta, balance_after, reference_id, metadata)
-       VALUES ($1, 'crate_open', 'vcard', $2, $3, $4, $5::jsonb)`,
+       VALUES ($1, 'crate_open', $2, $3, $4, $5, $6::jsonb)`,
       [
         playerId,
-        -crateCost + refund,
-        vcardAfter,
+        txCurrency,
+        txDelta,
+        txBalanceAfter,
         dropped.id,
-        JSON.stringify({ crateId, redeemedOwnedCrate: redeemOwnedCrate, duplicate, refund }),
+        JSON.stringify({ crateId, currencyUsed, duplicate, refund }),
       ],
     );
     await client.query('COMMIT');
-    return { crateId, droppedItem: dropped, duplicate, refundVCard: refund, vcardAfter };
+    return {
+      crateId,
+      droppedItem: dropped,
+      duplicate,
+      refundVCard: refund,
+      vcardAfter,
+      tournamentCreditsAfter,
+      currencyUsed,
+    };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;

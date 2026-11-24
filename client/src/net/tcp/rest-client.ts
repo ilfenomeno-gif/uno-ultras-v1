@@ -223,14 +223,20 @@ export async function purchaseShopItem(
 
 export async function openTournamentCrate(
   crateId: 'crate_bronze_100' | 'crate_silver_500' | 'crate_ssl_1000',
+  currency?: 'tournament_credits' | 'vcard',
 ): Promise<{
   crateId: string;
   droppedItem: { id: string; name: string; rarity: string };
   duplicate: boolean;
   refundVCard: number;
   vcardAfter: number;
+  tournamentCreditsAfter?: number;
 }> {
-  return postJson('/shop/crates/open', { crateId }, true);
+  return postJson(
+    '/shop/crates/open',
+    { crateId, ...(currency !== undefined ? { currency } : {}) },
+    true,
+  );
 }
 
 export async function fetchInventory(): Promise<{

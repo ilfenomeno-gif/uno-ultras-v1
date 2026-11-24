@@ -33,6 +33,7 @@ const PurchaseBodySchema = z.object({
 
 const OpenCrateBodySchema = z.object({
   crateId: z.enum(['crate_bronze_100', 'crate_silver_500', 'crate_ssl_1000']),
+  currency: z.enum(['tournament_credits', 'vcard']).optional(),
 });
 
 shopRouter.get('/catalog', (_req, res) => {
@@ -77,7 +78,11 @@ shopRouter.post('/crates/open', authRequired, shopLimiter, async (req, res) => {
     return;
   }
   try {
-    const result = await openCatalogCrate(req.user!.sub, parsed.data.crateId);
+    const result = await openCatalogCrate(
+      req.user!.sub,
+      parsed.data.crateId,
+      parsed.data.currency ?? 'tournament_credits',
+    );
     res.status(200).json(result);
   } catch (err) {
     const status = err instanceof InsufficientFundsError ? 402 : 400;
