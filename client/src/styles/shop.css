@@ -296,3 +296,432 @@ body.reduced-motion * {
   animation-duration: 0.01ms !important;
   transition-duration: 0.01ms !important;
 }
+
+/* ============================================================
+   Arcade Cyberpunk Shop Stage & Rarity Collector Cards
+   ============================================================ */
+
+.ultra-card.rarity-common {
+  border-color: rgba(205, 138, 88, 0.45);
+}
+
+.ultra-card.rarity-rare {
+  border-color: rgba(26, 209, 255, 0.52);
+  box-shadow: 0 0 18px rgba(26, 209, 255, 0.15);
+}
+
+.ultra-card.rarity-epic {
+  border-color: rgba(184, 77, 255, 0.56);
+  box-shadow: 0 0 18px rgba(184, 77, 255, 0.18);
+}
+
+.ultra-card.rarity-legendary {
+  border-color: rgba(255, 196, 46, 0.68);
+  box-shadow: 0 0 22px rgba(255, 196, 46, 0.22);
+}
+
+.ultra-card.rarity-mythic {
+  border-color: rgba(235, 245, 255, 0.85);
+  box-shadow: 0 0 26px rgba(168, 255, 239, 0.28);
+}
+
+.shop-stage {
+  position: relative;
+  gap: 0.85rem;
+  padding: 1.15rem 1.75rem 2.25rem;
+  background:
+    radial-gradient(ellipse 60% 42% at 15% 8%, rgba(0, 229, 255, 0.11), transparent 70%),
+    radial-gradient(ellipse 55% 40% at 85% 12%, rgba(255, 45, 149, 0.11), transparent 70%),
+    linear-gradient(180deg, #060916 0%, #090d1f 55%, #060814 100%);
+}
+
+.shop-stage::after {
+  content: '';
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 150px;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.22;
+  background-image:
+    linear-gradient(to right, rgba(0, 229, 255, 0.28) 1px, transparent 1px),
+    linear-gradient(to top, rgba(184, 77, 255, 0.32) 1px, transparent 1px);
+  background-size: 56px 28px;
+  mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.9), transparent);
+}
+
+.shop-header-strip,
+.shop-filter-bar,
+.shop-feedback,
+.shop-showcase-grid {
+  position: relative;
+  z-index: 1;
+}
+
+.shop-header-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(0, 229, 255, 0.2);
+}
+
+.shop-title-block {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.65rem;
+}
+
+.shop-heading {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.25rem;
+  letter-spacing: 0.08em;
+  color: #f8fafc;
+  text-shadow: 0 0 18px rgba(0, 229, 255, 0.35);
+}
+
+.shop-subtitle {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: #94a3b8;
+}
+
+.shop-wallet-hud {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.shop-currency-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.36rem 0.85rem;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border: 1.5px solid transparent;
+}
+
+.shop-currency-badge--vcard {
+  color: #ffe57f;
+  background: linear-gradient(135deg, rgba(245, 200, 66, 0.24), rgba(180, 110, 15, 0.16));
+  border-color: rgba(255, 213, 79, 0.72);
+  box-shadow: 0 0 16px rgba(245, 200, 66, 0.34);
+}
+
+.shop-currency-badge--tournament {
+  color: #7df9ff;
+  background: linear-gradient(135deg, rgba(0, 229, 255, 0.2), rgba(14, 116, 144, 0.18));
+  border-color: rgba(0, 229, 255, 0.68);
+  box-shadow: 0 0 16px rgba(0, 229, 255, 0.3);
+}
+
+.shop-currency-badge--crates {
+  color: #e9d5ff;
+  background: linear-gradient(135deg, rgba(192, 132, 252, 0.24), rgba(109, 40, 217, 0.22));
+  border-color: rgba(192, 132, 252, 0.7);
+  box-shadow: 0 0 16px rgba(184, 77, 255, 0.32);
+}
+
+.shop-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.shop-filter-pill {
+  padding: 0.4rem 0.95rem;
+  clip-path: polygon(7px 0, 100% 0, calc(100% - 7px) 100%, 0 100%);
+  background: rgba(15, 23, 46, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  transition: color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+}
+
+.shop-filter-pill:hover {
+  color: #ffffff;
+  background: rgba(0, 229, 255, 0.16);
+}
+
+.shop-filter-pill.active {
+  color: #070a14;
+  background: linear-gradient(135deg, #22d3ee 0%, #38bdf8 100%);
+  box-shadow: 0 0 16px rgba(0, 229, 255, 0.45);
+}
+
+.shop-filter-pill:focus-visible,
+.shop-buy-btn:focus-visible {
+  outline: 3px solid var(--color-gold);
+  outline-offset: 2px;
+}
+
+.shop-showcase-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 1.05rem;
+}
+
+.shop-item-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.85rem;
+  border-radius: 14px;
+  background: linear-gradient(175deg, rgba(14, 21, 44, 0.96) 0%, rgba(7, 11, 24, 0.98) 100%);
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  overflow: hidden;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.shop-item-card:hover,
+.shop-item-card:focus-within {
+  transform: translateY(-4px);
+}
+
+.shop-item-card--common {
+  border-color: #c88450;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 16px rgba(200, 132, 80, 0.26);
+}
+
+.shop-item-card--rare {
+  border-color: #1ad1ff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 20px rgba(26, 209, 255, 0.3);
+}
+
+.shop-item-card--epic {
+  border-color: #b84dff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 22px rgba(184, 77, 255, 0.34);
+}
+
+.shop-item-card--legendary {
+  border-color: #ffc42e;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.52), 0 0 24px rgba(255, 196, 46, 0.36);
+}
+
+.shop-item-card--mythic {
+  border-color: #eef7ff;
+  background:
+    linear-gradient(
+      142deg,
+      rgba(165, 243, 252, 0.26) 0%,
+      rgba(196, 181, 253, 0.3) 34%,
+      rgba(251, 207, 232, 0.26) 66%,
+      rgba(254, 240, 138, 0.22) 100%
+    ),
+    linear-gradient(175deg, rgba(20, 26, 52, 0.96) 0%, rgba(12, 16, 36, 0.98) 100%);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.55),
+    0 0 24px rgba(165, 243, 252, 0.35),
+    0 0 36px rgba(196, 181, 253, 0.28);
+}
+
+.shop-card-badges {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.shop-rarity-pill,
+.shop-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.shop-rarity-pill--common {
+  background: rgba(200, 132, 80, 0.24);
+  border: 1px solid rgba(200, 132, 80, 0.65);
+  color: #f6ba8a;
+}
+
+.shop-rarity-pill--rare {
+  background: rgba(26, 209, 255, 0.2);
+  border: 1px solid rgba(26, 209, 255, 0.68);
+  color: #7ee8ff;
+}
+
+.shop-rarity-pill--epic {
+  background: rgba(184, 77, 255, 0.24);
+  border: 1px solid rgba(184, 77, 255, 0.72);
+  color: #e4b4ff;
+}
+
+.shop-rarity-pill--legendary {
+  background: rgba(255, 196, 46, 0.22);
+  border: 1px solid rgba(255, 196, 46, 0.78);
+  color: #ffe07d;
+}
+
+.shop-rarity-pill--mythic {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(224, 242, 254, 0.85));
+  border: 1px solid #ffffff;
+  color: #0b1022;
+}
+
+.shop-tag-pill--daily {
+  background: rgba(255, 213, 0, 0.22);
+  border: 1px solid rgba(255, 213, 0, 0.75);
+  color: #ffe66d;
+}
+
+.shop-tag-pill--owned {
+  background: rgba(46, 213, 115, 0.22);
+  border: 1px solid rgba(46, 213, 115, 0.65);
+  color: #86efac;
+}
+
+.shop-tag-pill--crate {
+  background: rgba(192, 132, 252, 0.2);
+  border: 1px solid rgba(192, 132, 252, 0.62);
+  color: #e9d5ff;
+}
+
+.shop-item-art {
+  height: 132px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: radial-gradient(circle at 50% 52%, rgba(255, 255, 255, 0.06), rgba(4, 7, 18, 0.65) 75%);
+  padding: 0.35rem;
+}
+
+.shop-item-art svg {
+  width: 100%;
+  height: 100%;
+  max-width: 168px;
+  max-height: 126px;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.65));
+}
+
+.shop-item-art--rare {
+  background: radial-gradient(circle at 50% 52%, rgba(26, 209, 255, 0.14), rgba(4, 7, 18, 0.65) 75%);
+}
+
+.shop-item-art--epic {
+  background: radial-gradient(circle at 50% 52%, rgba(184, 77, 255, 0.16), rgba(4, 7, 18, 0.65) 75%);
+}
+
+.shop-item-art--legendary {
+  background: radial-gradient(circle at 50% 52%, rgba(255, 196, 46, 0.16), rgba(4, 7, 18, 0.65) 75%);
+}
+
+.shop-item-art--mythic {
+  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.24), rgba(196, 181, 253, 0.12) 72%);
+}
+
+.shop-item-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  flex: 1;
+}
+
+.shop-item-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.98rem;
+  color: #f8fafc;
+}
+
+.shop-item-desc {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: #cbd5e1;
+}
+
+.shop-item-card--mythic .shop-item-title,
+.shop-item-card--mythic .shop-item-price {
+  color: #ffffff;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45);
+}
+
+.shop-item-card--mythic .shop-item-desc {
+  color: #f1f5f9;
+}
+
+.shop-item-price {
+  margin-top: auto;
+  padding-top: 0.35rem;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: #ffe066;
+}
+
+.shop-buy-btn {
+  width: 100%;
+  padding: 0.56rem 0.9rem;
+  border-radius: 8px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+
+.shop-buy-btn:hover:not(.is-disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+}
+
+.shop-buy-btn.is-disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.shop-buy-btn--common {
+  background: linear-gradient(135deg, #d89660 0%, #9b592b 100%);
+  color: #160c04;
+}
+
+.shop-buy-btn--rare {
+  background: linear-gradient(135deg, #2be4ff 0%, #1d8ee0 100%);
+  color: #051120;
+  box-shadow: 0 0 14px rgba(26, 209, 255, 0.35);
+}
+
+.shop-buy-btn--epic {
+  background: linear-gradient(135deg, #c76bff 0%, #7d32dc 100%);
+  color: #ffffff;
+  box-shadow: 0 0 16px rgba(184, 77, 255, 0.4);
+}
+
+.shop-buy-btn--legendary {
+  background: linear-gradient(135deg, #ffe066 0%, #e59a1a 100%);
+  color: #171004;
+  box-shadow: 0 0 16px rgba(255, 196, 46, 0.42);
+}
+
+.shop-buy-btn--mythic {
+  background: linear-gradient(135deg, #d8f8ff 0%, #f4d8ff 50%, #fef3c7 100%);
+  color: #091024;
+  border-color: #ffffff;
+  box-shadow: 0 0 18px rgba(255, 255, 255, 0.45);
+}
