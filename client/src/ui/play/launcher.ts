@@ -3,34 +3,33 @@
 // ============================================================
 
 import {
-  GAME_MODES,
-  PLAYER_COUNTS,
   type GameMode,
+  type MatchVariant,
   type PlayerCount,
 } from '@uno/shared';
+import { createModeSelector } from './mode-selector.js';
+import { createPlayerCountSelector } from './player-count-selector.js';
+import { createRankedToggle } from './ranked-toggle.js';
 
 export interface LauncherConfig {
   mode: GameMode;
   playerCount: PlayerCount;
   ranked: boolean;
+  variant?: MatchVariant;
 }
 
-const MODE_LABELS: Record<GameMode, string> = {
-  uno: 'UNO Classic (Online)',
-  blackjack: 'Blackjack',
-  scala40: 'Scala 40',
-  'ruba-mazzetto': 'Ruba Mazzetto',
-  scopa: 'Scopa',
-  'poker-texas': 'Poker Texas Hold’em',
-  burraco: 'Burraco',
-  'mille-miglia': 'Mille Miglia',
-};
+const VARIANT_LABELS: ReadonlyArray<{ id: MatchVariant; label: string }> = [
+  { id: 'standard', label: 'Classica' },
+  { id: 'blitz', label: 'Blitz (10s · 5 carte)' },
+  { id: 'chaos', label: 'Chaos (Flip ogni 4 turni)' },
+  { id: 'team', label: 'Team 2v2 (4 giocatori)' },
+];
 
 export function createLauncherPanel(
   initial: LauncherConfig,
   onLaunch: (config: LauncherConfig) => Promise<void> | void
 ): HTMLElement {
-  const state: LauncherConfig = { ...initial };
+  const state: LauncherConfig = { variant: 'standard', ...initial };
 
   const panel = document.createElement('aside');
   panel.className = 'launcher-panel glass-panel';
@@ -39,25 +38,38 @@ export function createLauncherPanel(
   heading.className = 'launcher-heading';
   heading.textContent = 'Configura Partita';
 
-  // Mode selector
+  // Mode selector (reused component)
   const modeField = document.createElement('div');
   modeField.className = 'launcher-field';
   const modeLabel = document.createElement('label');
   modeLabel.className = 'launcher-label';
   modeLabel.textContent = 'Modalità';
-  const select = document.createElement('select');
-  select.className = 'launcher-select';
-  for (const mode of GAME_MODES) {
-    const opt = document.createElement('option');
-    opt.value = mode;
-    opt.textContent = MODE_LABELS[mode];
-    if (mode === state.mode) opt.selected = true;
-    select.appendChild(opt);
-  }
-  select.addEventListener('change', () => {
-    state.mode = select.value as GameMode;
+  const select = createModeSelector(state.mode, (mode) => {
+    state.mode = mode;
+    variantField.style.display = mode === 'uno' ? '' : 'none';
   });
   modeField.append(modeLabel, select);
+
+  // Variant selector (Standard / Blitz / Chaos / Team)
+  const variantField = document.createElement('div');
+  variantField.className = 'launcher-field';
+  variantField.style.display = state.mode === 'uno' ? '' : 'none';
+  const variantLabel = document.createElement('label');
+  variantLabel.className = 'launcher-label';
+  variantLabel.textContent = 'Variante UNO';
+  const variantSelect = document.createElement('select');
+  variantSelect.className = 'launcher-select';
+  for (const v of VARIANT_LABELS) {
+    const opt = document.createElement('option');
+    opt.value = v.id;
+    opt.textContent = v.label;
+    if (v.id === (state.variant ?? 'standard')) opt.selected = true;
+    variantSelect.appendChild(opt);
+  }
+  variantSelect.addEventListener('change', () => {
+    state.variant = variantSelect.value as MatchVariant;
+  });
+  variantField.append(variantLabel, variantSelect);
 
   // Player count selector (1-4)
   const countField = document.createElement('div');
@@ -65,23 +77,9 @@ export function createLauncherPanel(
   const countLabel = document.createElement('span');
   countLabel.className = 'launcher-label';
   countLabel.textContent = 'Giocatori';
-  const countRow = document.createElement('div');
-  countRow.className = 'launcher-row';
-  const pillButtons: HTMLButtonElement[] = [];
-
-  for (const count of PLAYER_COUNTS) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `launcher-pill${state.playerCount === count ? ' active' : ''}`;
-    btn.textContent = `${count}P`;
-    btn.addEventListener('click', () => {
-      state.playerCount = count;
-      for (const b of pillButtons) b.classList.remove('active');
-      btn.classList.add('active');
-    });
-    pillButtons.push(btn);
-    countRow.appendChild(btn);
-  }
+  const countRow = createPlayerCountSelector(state.playerCount, (count) => {
+    state.playerCount = count;
+  });
   countField.append(countLabel, countRow);
 
   // Ranked toggle
@@ -90,16 +88,8 @@ export function createLauncherPanel(
   const rankedLabel = document.createElement('span');
   rankedLabel.className = 'launcher-label';
   rankedLabel.textContent = 'Classificata (MMR)';
-  const rankedBtn = document.createElement('button');
-  rankedBtn.type = 'button';
-  const syncRankedBtn = (): void => {
-    rankedBtn.className = `launcher-ranked-btn${state.ranked ? ' active' : ''}`;
-    rankedBtn.textContent = state.ranked ? 'RANKED ON' : 'CASUAL';
-  };
-  syncRankedBtn();
-  rankedBtn.addEventListener('click', () => {
-    state.ranked = !state.ranked;
-    syncRankedBtn();
+  const rankedBtn = createRankedToggle(state.ranked, (ranked) => {
+    state.ranked = ranked;
   });
   rankedRow.append(rankedLabel, rankedBtn);
 
@@ -128,6 +118,6 @@ export function createLauncherPanel(
     }
   });
 
-  panel.append(heading, modeField, countField, rankedRow, playBtn, statusEl);
+  panel.append(heading, modeField, variantField, countField, rankedRow, playBtn, statusEl);
   return panel;
 }

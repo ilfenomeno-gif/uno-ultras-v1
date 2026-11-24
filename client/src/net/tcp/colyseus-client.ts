@@ -33,6 +33,8 @@ export interface JoinOptions {
   maxPlayers: number;
   ranked: boolean;
   fillWithBots?: boolean;
+  variant?: string;
+  spectator?: boolean;
 }
 
 export async function joinUnoRoom(opts: JoinOptions): Promise<Room<UnoRoomState>> {
@@ -44,6 +46,8 @@ export async function joinUnoRoom(opts: JoinOptions): Promise<Room<UnoRoomState>
     maxPlayers: opts.maxPlayers,
     ranked: opts.ranked,
     ...(opts.fillWithBots !== undefined ? { fillWithBots: opts.fillWithBots } : {}),
+    ...(opts.variant !== undefined ? { variant: opts.variant } : {}),
+    ...(opts.spectator !== undefined ? { spectator: opts.spectator } : {}),
   };
   room = await getClient().joinOrCreate<UnoRoomState>('uno', payload);
   room.onMessage<HandUpdateMessage>(TCP_CHANNELS.HAND, (msg) => {

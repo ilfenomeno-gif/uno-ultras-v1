@@ -96,9 +96,15 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
         <h2 data-role="ended-title">Partita Terminata</h2>
         <p data-role="ended-winner"></p>
         <div class="scores-list" data-role="scores-list"></div>
-        <button type="button" class="launcher-play-btn" data-action="back-lobby">
-          TORNA IN LOBBY
-        </button>
+        <div data-role="rematch-status" style="font-size:0.85rem;margin:0.4rem 0;"></div>
+        <div class="battle-actions" style="justify-content:center;margin-top:0.6rem;">
+          <button type="button" class="launcher-play-btn" data-action="rematch">
+            RIVINCITA (1-TAP)
+          </button>
+          <button type="button" class="hint-btn" data-action="back-lobby">
+            TORNA IN LOBBY
+          </button>
+        </div>
       </div>
     </div>
   `;
@@ -120,6 +126,8 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
   const endedOverlay = root.querySelector<HTMLElement>('[data-role="ended-overlay"]')!;
   const endedWinnerEl = root.querySelector<HTMLElement>('[data-role="ended-winner"]')!;
   const scoresListEl = root.querySelector<HTMLElement>('[data-role="scores-list"]')!;
+  const rematchStatusEl = root.querySelector<HTMLElement>('[data-role="rematch-status"]')!;
+  const rematchBtn = root.querySelector<HTMLButtonElement>('[data-action="rematch"]')!;
   const backLobbyBtn = root.querySelector<HTMLButtonElement>('[data-action="back-lobby"]')!;
   const exitBtn = root.querySelector<HTMLButtonElement>('.game-view__exit')!;
 
@@ -171,6 +179,10 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
 
   exitBtn.addEventListener('click', () => void handleExit());
   backLobbyBtn.addEventListener('click', () => void handleExit());
+  rematchBtn.addEventListener('click', () => {
+    rematchBtn.disabled = true;
+    room.send('rematch_vote');
+  });
 
   const handlePlayCard = (card: UnoCard): void => {
     errorBanner = null;
@@ -249,6 +261,7 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
       endedOverlay.hidden = true;
     }
 
+    const isSpectator = state.phase === 'playing' && !state.players.has(myId);
     const isMyTurn = state.phase === 'playing' && currentPlayerId === myId;
     const topCard = extractTopCard(state);
     const activeColor = parseActiveColor(state.activeColor);
@@ -264,6 +277,9 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
       statusEl.textContent = 'In attesa dei giocatori…';
     } else if (state.phase === 'finished') {
       statusEl.textContent = 'Partita terminata';
+    } else if (isSpectator) {
+      const turnName = nameMap.get(currentPlayerId) ?? '…';
+      statusEl.textContent = `MODALITÀ SPETTATORE · Turno di ${turnName}`;
     } else if (isMyTurn) {
       statusEl.textContent = `Tocca a te — Colore: ${formatColorLabel(state.activeColor)}`;
     } else {
@@ -347,7 +363,22 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
 
   const offEnded = colyseus.onMatchEnded((msg) => {
     endedMessage = msg;
+    rematchBtn.disabled = false;
+    rematchStatusEl.textContent = '';
     render();
+  });
+
+  room.onMessage('rematch_status', (payload: { votes: number; required: number }) => {
+    rematchStatusEl.textContent = `Voti rivincita: ${payload.votes}/${payload.required}`;
+  });
+
+  room.onMessage('chaos_flip', () => {
+    unoBanner = 'CHAOS FLIP! Direzione invertita!';
+    render();
+    window.setTimeout(() => {
+      unoBanner = null;
+      render();
+    }, 2200);
   });
 
   render();

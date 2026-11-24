@@ -17,6 +17,7 @@ import { battleCardRouter } from './rest-routes/battle-card.js';
 import { challengesRouter, leaderboardRouter } from './rest-routes/challenges.js';
 import { tournamentsRouter } from './rest-routes/tournaments.js';
 import { syncRouter } from './rest-routes/sync.js';
+import { matchmakingRouter } from './rest-routes/matchmaking.js';
 
 export function createHttpApp(): Express {
   const app = express();
@@ -51,6 +52,7 @@ export function createHttpApp(): Express {
   app.use('/api/leaderboard', leaderboardRouter);
   app.use('/api/tournaments', tournamentsRouter);
   app.use('/api/sync', syncRouter);
+  app.use('/api/matchmaking', matchmakingRouter);
 
   // 404 fallback per rotte API non gestite
   app.use('/api', (_req, res) => {

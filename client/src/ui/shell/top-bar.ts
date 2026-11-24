@@ -23,6 +23,7 @@ export const TOP_TABS: readonly TopTabItem[] = [
 export interface TopBarCallbacks {
   onSelectTab: (route: Exclude<AppRoute, 'splash' | 'auth' | 'game'>) => void;
   onToggleSocial: () => void;
+  onOpenSettings?: () => void;
   username?: string;
   onLogout?: () => void;
 }
@@ -68,6 +69,17 @@ export function createTopBar(
   socialBtn.textContent = 'SOCIAL';
   socialBtn.addEventListener('click', callbacks.onToggleSocial);
   actions.appendChild(socialBtn);
+
+  if (callbacks.onOpenSettings) {
+    const onOpenSettings = callbacks.onOpenSettings;
+    const settingsBtn = document.createElement('button');
+    settingsBtn.type = 'button';
+    settingsBtn.className = 'top-bar-social-btn';
+    settingsBtn.textContent = '⚙';
+    settingsBtn.setAttribute('aria-label', 'Impostazioni');
+    settingsBtn.addEventListener('click', onOpenSettings);
+    actions.appendChild(settingsBtn);
+  }
 
   if (callbacks.onLogout) {
     const onLogout = callbacks.onLogout;

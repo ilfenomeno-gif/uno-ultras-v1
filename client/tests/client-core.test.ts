@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { ReactiveStore } from '../src/core/store.js';
 import { Router } from '../src/core/router.js';
 import { formatCardSymbol, formatColorLabel } from '../src/game-view/card-format.js';
+import { loadSettings, saveSettings } from '../src/ui/shell/settings-modal.js';
 import {
   clearSession,
   getProfile,
@@ -146,5 +147,15 @@ describe('Client Router & Card Formatting', () => {
     expect(formatCardSymbol({ id: 'wd4', color: 'wild', kind: 'wild_draw4' })).toBe('+4');
     expect(formatColorLabel('blue')).toBe('Blu');
     expect(formatColorLabel('unknown')).toBe('—');
+  });
+
+  it('persists and reloads 5-tab client settings', () => {
+    const defaults = loadSettings();
+    expect(defaults.audioVolume).toBe(75);
+    saveSettings({ ...defaults, highContrast: true, reducedMotion: true, audioVolume: 40 });
+    const reloaded = loadSettings();
+    expect(reloaded.highContrast).toBe(true);
+    expect(reloaded.reducedMotion).toBe(true);
+    expect(reloaded.audioVolume).toBe(40);
   });
 });

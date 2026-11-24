@@ -18,6 +18,7 @@ import { renderSplashScreen } from './ui/shell/splash-screen.js';
 import { mountAuthScreen } from './ui/shell/auth-screen.js';
 import { createTopBar, type TopBarCallbacks } from './ui/shell/top-bar.js';
 import { NewsTicker } from './ui/shell/news-ticker.js';
+import { applySettingsToDocument, openSettingsModal } from './ui/shell/settings-modal.js';
 import { SocialDrawer } from './ui/play/social-drawer.js';
 import type { LauncherConfig } from './ui/play/launcher.js';
 import { createPlayView } from './ui/navigation/tab-play.js';
@@ -33,6 +34,7 @@ function bootstrap(): void {
   if (!appRoot) throw new Error('Elemento #app non trovato');
 
   initClientEnvironment();
+  applySettingsToDocument();
 
   if (canvas) {
     const particles = new ParticlesCanvas(canvas);
@@ -56,12 +58,13 @@ function bootstrap(): void {
       openMiniGameSandboxModal(cfg.mode);
       return;
     }
-    const maxPlayers = cfg.playerCount === 1 ? 4 : cfg.playerCount;
+    const maxPlayers = cfg.variant === 'team' ? 4 : cfg.playerCount === 1 ? 4 : cfg.playerCount;
     await enterMatch({
       mode: cfg.mode,
       maxPlayers,
       ranked: cfg.ranked,
       fillWithBots: true,
+      ...(cfg.variant !== undefined ? { variant: cfg.variant } : {}),
     });
     if (cfg.playerCount === 1) {
       colyseus.startMatch();
@@ -118,6 +121,7 @@ function bootstrap(): void {
     const topBarCallbacks: TopBarCallbacks = {
       onSelectTab: (next) => router.navigate(next),
       onToggleSocial: () => socialDrawer.toggle(),
+      onOpenSettings: () => openSettingsModal(),
       onLogout: () => {
         signOut();
         router.navigate('splash');

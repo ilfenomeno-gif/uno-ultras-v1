@@ -318,3 +318,36 @@ export async function joinTournament(id: string): Promise<{ participantCount: nu
 export async function syncOfflineBatch(events: readonly unknown[]): Promise<{ applied: number }> {
   return postJson('/sync/offline-batch', { events }, true);
 }
+
+export async function fetchMatchReplay(matchId: string): Promise<{
+  matchId: string;
+  seed: number;
+  events: readonly Record<string, unknown>[];
+}> {
+  return requestJson(`/leaderboard/replays/${encodeURIComponent(matchId)}`, {
+    method: 'GET',
+    headers: authHeaders(),
+  });
+}
+
+export async function enqueueMatchmaking(payload: {
+  mode: string;
+  ranked: boolean;
+  targetPlayers: number;
+}): Promise<{ ticket: { ticketId: string }; matched: Record<string, unknown> | null }> {
+  return postJson('/matchmaking/enqueue', payload, true);
+}
+
+export async function fetchMatchmakingStatus(ticketId: string): Promise<Record<string, unknown>> {
+  return requestJson(`/matchmaking/status/${encodeURIComponent(ticketId)}`, {
+    method: 'GET',
+    headers: authHeaders(),
+  });
+}
+
+export async function cancelMatchmaking(mode: string, ranked: boolean): Promise<{ cancelled: boolean }> {
+  return requestJson(
+    `/matchmaking/cancel?mode=${encodeURIComponent(mode)}&ranked=${String(ranked)}`,
+    { method: 'DELETE', headers: authHeaders() },
+  );
+}

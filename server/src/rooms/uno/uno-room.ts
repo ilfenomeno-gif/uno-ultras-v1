@@ -16,9 +16,13 @@ import {
   PlayerState,
   TCP_CHANNELS,
   UnoRoomState,
+  validatePresetForPlayers,
+  VARIANT_PRESETS,
   type AIDifficulty,
   type AIProfile,
+  type CustomMatchConfig,
   type MatchAction,
+  type MatchVariant,
 } from '@uno/shared';
 import { verifyAccessToken } from '../../auth/jwt-service.js';
 import { adviseBotMove } from '../../ai/gemini-bot-advisor.js';
@@ -36,12 +40,15 @@ export interface UnoRoomCreateOptions {
   fillWithBots?: boolean;
   botDifficulty?: AIDifficulty;
   ranked?: boolean;
+  variant?: MatchVariant;
+  customConfig?: CustomMatchConfig;
 }
 
 export interface UnoRoomJoinOptions {
   token?: string;
   username?: string;
   playerId?: string;
+  spectator?: boolean;
 }
 
 const BOT_PROFILES_ROTATION: readonly AIProfile[] = ['AGGR', 'CONS', 'STRAT'];
@@ -52,11 +59,14 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
   private readonly clientToPlayerId = new Map<string, string>();
   private readonly playerIdToClient = new Map<string, Client>();
   private readonly lobbyParticipants = new Map<string, UnoParticipant>();
+  private readonly spectators = new Set<string>();
+  private readonly rematchVotes = new Set<string>();
 
   private targetPlayers = 4;
   private fillWithBots = true;
   private botDifficulty: AIDifficulty = 'normal';
   private isRanked = false;
+  private matchConfig: CustomMatchConfig = VARIANT_PRESETS.standard;
   private startedAtMs = 0;
   private initialSeed = 0;
   private turnCount = 0;
@@ -77,16 +87,22 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
 
     const requested = options.maxPlayers ?? 4;
     this.targetPlayers = Math.max(2, Math.min(4, requested));
-    this.maxClients = this.targetPlayers;
+    this.maxClients = this.targetPlayers + 4; // room extra slots per spettatori
     this.fillWithBots = options.fillWithBots ?? true;
     this.botDifficulty = options.botDifficulty ?? 'normal';
     this.isRanked = options.ranked ?? false;
+
+    const basePreset = VARIANT_PRESETS[options.variant ?? 'standard'] ?? VARIANT_PRESETS.standard;
+    const candidate = options.customConfig ?? basePreset;
+    const validated = validatePresetForPlayers(candidate, this.targetPlayers);
+    this.matchConfig = validated.ok && validated.config ? validated.config : basePreset;
 
     this.registerMessageHandlers();
     this.logInfo('UnoRoom created', {
       targetPlayers: this.targetPlayers,
       fillWithBots: this.fillWithBots,
       botDifficulty: this.botDifficulty,
+      variant: this.matchConfig.variant,
     });
   }
 
@@ -107,6 +123,13 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
 
     this.clientToPlayerId.set(client.sessionId, playerId);
     this.playerIdToClient.set(playerId, client);
+
+    if (options.spectator && this.matchConfig.allowSpectators) {
+      this.spectators.add(playerId);
+      this.logInfo('Spectator joined UnoRoom', { playerId, username });
+      return;
+    }
+
     void presenceService.setInGame(playerId, this.roomId);
 
     // Se la partita è già in corso (riconnessione), reinvia solo la mano
@@ -166,6 +189,11 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
     this.playerIdToClient.delete(playerId);
     this.clientToPlayerId.delete(client.sessionId);
     this.actionThrottle.reset(playerId);
+    this.rematchVotes.delete(playerId);
+
+    if (this.spectators.delete(playerId)) {
+      return;
+    }
 
     if (this.state.phase === 'lobby') {
       this.lobbyParticipants.delete(playerId);
@@ -248,7 +276,7 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
 
     const handleAction = (client: Client, raw: unknown) => {
       const playerId = this.clientToPlayerId.get(client.sessionId);
-      if (!playerId) return;
+      if (!playerId || this.spectators.has(playerId)) return;
 
       if (!this.actionThrottle.allow(playerId)) {
         this.sendSafe(client, TCP_CHANNELS.ACTION_RESULT, {
@@ -306,6 +334,30 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
     this.onMessage(TCP_CHANNELS.LEAVE_MATCH, (client) => {
       client.leave();
     });
+
+    this.onMessage('rematch_vote', (client) => {
+      const playerId = this.clientToPlayerId.get(client.sessionId);
+      if (
+        !playerId ||
+        this.spectators.has(playerId) ||
+        this.state.phase !== 'finished' ||
+        !this.matchConfig.allowRematch
+      ) {
+        return;
+      }
+      this.rematchVotes.add(playerId);
+      const connectedHumans = [...this.lobbyParticipants.values()].filter(
+        (p) => !p.isBot && this.playerIdToClient.has(p.id),
+      ).length;
+      const required = Math.max(1, connectedHumans);
+      const votes = this.rematchVotes.size;
+      this.broadcast('rematch_status', { votes, required });
+      if (votes >= required) {
+        this.rematchVotes.clear();
+        this.state.phase = 'lobby';
+        this.startUnoMatch();
+      }
+    });
   }
 
   // ── Match flow ────────────────────────────────────────────
@@ -336,12 +388,21 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
     this.initialSeed = seed;
     this.startedAtMs = Date.now();
     this.turnCount = 0;
+    this.rematchVotes.clear();
     this.playerCounters.clear();
     this.replayEvents.length = 0;
-    this.controller.initMatch(this.roomId, participants, seed);
+    this.controller.initMatch(this.roomId, participants, seed, this.matchConfig.rules);
     this.controller.syncToRoomState(this.state);
+    if (this.matchConfig.teamPlay && participants.length === 4) {
+      participants.forEach((p, idx) => {
+        const ps = this.state.players.get(p.id);
+        if (ps) ps.teamId = idx % 2 === 0 ? 'A' : 'B';
+      });
+    }
     this.sendAllPrivateHands();
-    this.lock();
+    if (!this.matchConfig.allowSpectators) {
+      this.lock();
+    }
 
     this.logInfo('UNO match started', {
       players: participants.length,
@@ -365,6 +426,17 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
     try {
       const nextState = this.controller.dispatch(playerId, action);
       this.turnCount += 1;
+      if (
+        this.matchConfig.chaosFlipIntervalTurns > 0 &&
+        nextState.phase === 'playing' &&
+        this.turnCount % this.matchConfig.chaosFlipIntervalTurns === 0
+      ) {
+        nextState.direction = (nextState.direction * -1) as 1 | -1;
+        this.broadcast('chaos_flip', {
+          direction: nextState.direction,
+          turnCount: this.turnCount,
+        });
+      }
       const stats = this.playerCounters.get(playerId) ?? { cardsPlayed: 0, unoCalls: 0, drawStacks: 0 };
       if (action.type === 'play_card') {
         stats.cardsPlayed += 1;

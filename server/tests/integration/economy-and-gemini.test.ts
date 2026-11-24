@@ -207,6 +207,31 @@ describe('Express REST endpoints (shop, tournaments, sync presets, metrics)', ()
         body: JSON.stringify({ kind: 'ucs-ssl' }),
       });
       expect(sslRes.status).toBe(403);
+
+      // P2 Matchmaking REST enqueue -> status -> cancel
+      const enqRes = await fetch(`${base}/matchmaking/enqueue`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ mode: 'uno', ranked: true, targetPlayers: 2 }),
+      });
+      expect(enqRes.status).toBe(200);
+      const enqJson = (await enqRes.json()) as { ticket: { ticketId: string }; matched: unknown };
+      expect(enqJson.ticket.ticketId.length).toBeGreaterThan(5);
+
+      const statusRes = await fetch(`${base}/matchmaking/status/${enqJson.ticket.ticketId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(statusRes.status).toBe(200);
+
+      const cancelRes = await fetch(`${base}/matchmaking/cancel?mode=uno&ranked=true`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(cancelRes.status).toBe(200);
+      expect((await cancelRes.json() as { cancelled: boolean }).cancelled).toBe(true);
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }

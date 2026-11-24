@@ -28,6 +28,8 @@ export async function enterMatch(opts: {
   maxPlayers: number;
   ranked: boolean;
   fillWithBots?: boolean;
+  variant?: string;
+  spectator?: boolean;
 }): Promise<Room<UnoRoomState>> {
   const token = getToken();
   if (!token) throw new Error('Utente non autenticato');
