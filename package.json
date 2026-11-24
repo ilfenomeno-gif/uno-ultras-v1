@@ -14,7 +14,7 @@
     "npm": ">=11.0.0"
   },
   "scripts": {
-    "dev": "concurrently -k -n server,client -c cyan,magenta \"npm run dev --workspace=server\" \"npm run dev --workspace=client\"",
+    "dev": "concurrently -k -n shared,srv-tsc,server,client -c yellow,blue,cyan,magenta \"npx tsc -p shared/tsconfig.json --watch --preserveWatchOutput\" \"npx tsc -p server/tsconfig.json --watch --preserveWatchOutput\" \"node --env-file-if-exists=.env --watch --watch-path=server/dist --watch-path=shared/dist server/dist/index.js\" \"npm run dev --workspace=client\"",
     "build": "npm run build --workspace=shared && npm run build --workspace=server && npm run build --workspace=client",
     "typecheck": "tsc -p shared/tsconfig.json --noEmit && tsc -p server/tsconfig.json --noEmit && tsc -p client/tsconfig.json --noEmit",
     "start": "node server/dist/index.js",
