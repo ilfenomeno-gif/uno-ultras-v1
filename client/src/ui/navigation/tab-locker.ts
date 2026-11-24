@@ -1,123 +1,556 @@
 // ============================================================
-// UNO ULTRA Client — Armadietto Tab (Loadout & ×N Duplicates)
+// UNO ULTRA Client — 3-Column Holographic Armadietto (Locker)
 // ============================================================
 
-import { CATALOG_BY_ID } from '@uno/shared';
-import { equipInventoryItem, fetchInventory } from '../../net/tcp/rest-client.js';
+import { CATALOG_BY_ID, type CosmeticRarity } from '@uno/shared';
+import { announce } from '../../core/aria-live.js';
+import { playEarcon } from '../../core/audio-earcons.js';
+import { computeSafeLoopIndex, hasBlockedModifier } from '../../core/keyboard-nav.js';
+import {
+  equipInventoryItem,
+  fetchInventory,
+  openTournamentCrate,
+} from '../../net/tcp/rest-client.js';
 import {
   getEconomySnapshot,
   setEconomySnapshot,
+  type ClientInventoryEntry,
   type ClientLoadout,
 } from '../../state/inventory-store.js';
+import { patchProfile } from '../../state/profile-store.js';
+import { getShopItemArtworkSvg } from './shop-artworks.js';
+import {
+  filterOwnedByCategory,
+  getPedestalActionState,
+  isItemEquippedInLoadout,
+  LOCKER_CATEGORIES,
+  type LockerCategoryId,
+} from './locker-helpers.js';
+
+type CrateId = 'crate_bronze_100' | 'crate_silver_500' | 'crate_ssl_1000';
+
+function isCrateId(id: string): id is CrateId {
+  return id === 'crate_bronze_100' || id === 'crate_silver_500' || id === 'crate_ssl_1000';
+}
+
+function resolveItemRarity(itemId: string): CosmeticRarity {
+  return CATALOG_BY_ID[itemId]?.rarity ?? 'common';
+}
+
+function resolveDisplayName(itemId: string | undefined): string {
+  if (!itemId) return 'Predefinito';
+  return CATALOG_BY_ID[itemId]?.name ?? 'Predefinito';
+}
 
 export function createLockerView(): HTMLElement {
   const root = document.createElement('section');
-  root.className = 'tab-section';
+  root.className = 'tab-section locker-stage';
+  root.setAttribute('aria-label', 'Armadietto Cosmetici');
 
-  const header = document.createElement('div');
-  header.className = 'tab-status-bar glass-panel';
-  const grid = document.createElement('div');
-  grid.className = 'shop-grid';
-  const feedback = document.createElement('div');
-  feedback.className = 'tab-feedback';
+  let activeCategory: LockerCategoryId = 'avatar';
+  let selectedItemId: string | null = null;
+  let busyAction = false;
+  let statusMessage = '';
 
-  const paint = (): void => {
-    const snap = getEconomySnapshot();
-    header.innerHTML = '';
-    const titleWrap = document.createElement('div');
-    const titleStrong = document.createElement('strong');
-    titleStrong.textContent = 'ARMADIETTO COSMETICI';
-    titleWrap.appendChild(titleStrong);
+  const layout = document.createElement('div');
+  layout.className = 'locker-layout';
 
-    const pillsWrap = document.createElement('div');
-    pillsWrap.className = 'wallet-pills';
-    const slotsMeta: Array<[string, string]> = [
-      ['Avatar', snap.loadout.avatar],
-      ['Cornice', snap.loadout.frame],
-      ['Dorso', snap.loadout.cardStyle],
-      ['Titolo', snap.loadout.title],
-    ];
-    for (const [label, value] of slotsMeta) {
-      const span = document.createElement('span');
-      span.textContent = `${label}: `;
-      const bold = document.createElement('b');
-      bold.textContent = value;
-      span.appendChild(bold);
-      pillsWrap.appendChild(span);
-    }
-    header.append(titleWrap, pillsWrap);
-    grid.innerHTML = '';
+  const sidebar = document.createElement('aside');
+  sidebar.className = 'locker-sidebar';
 
-    for (const entry of snap.items) {
-      if (entry.category === 'crate') continue;
-      const meta = CATALOG_BY_ID[entry.itemId];
-      const slot =
-        entry.category === 'avatar'
-          ? 'avatar'
-          : entry.category === 'frame'
-            ? 'frame'
-            : entry.category === 'card_back'
-              ? 'card_back'
-              : 'title';
+  const pedestalCol = document.createElement('div');
+  pedestalCol.className = 'locker-pedestal-col';
 
-      const card = document.createElement('article');
-      card.className = 'ultra-card glass-panel';
-      const topRow = document.createElement('div');
-      topRow.className = 'card-top-row';
-      const catBadge = document.createElement('span');
-      catBadge.className = 'ultra-badge';
-      catBadge.textContent = entry.category.toUpperCase();
-      const qtyBadge = document.createElement('span');
-      qtyBadge.className = 'ultra-badge ultra-badge--gold';
-      qtyBadge.textContent = `×${entry.quantity}`;
-      topRow.append(catBadge, qtyBadge);
+  const gridCol = document.createElement('div');
+  gridCol.className = 'locker-grid-col';
 
-      const h3 = document.createElement('h3');
-      h3.textContent = meta?.name ?? entry.itemId;
-      const pDesc = document.createElement('p');
-      pDesc.textContent = meta?.description ?? 'Cosmetico sbloccato';
-      card.append(topRow, h3, pDesc);
+  layout.append(sidebar, pedestalCol, gridCol);
+  root.appendChild(layout);
 
-      const isEquipped =
-        snap.loadout.avatar === entry.itemId ||
-        snap.loadout.frame === entry.itemId ||
-        snap.loadout.cardStyle === entry.itemId ||
-        snap.loadout.title === entry.itemId;
+  const pickDefaultSelection = (
+    category: LockerCategoryId,
+    items: readonly ClientInventoryEntry[],
+    loadout: ClientLoadout
+  ): string | null => {
+    if (items.length === 0) return null;
+    const equippedEntry = items.find((entry) =>
+      isItemEquippedInLoadout(entry.itemId, category, loadout)
+    );
+    return (equippedEntry ?? items[0])?.itemId ?? null;
+  };
 
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = `ultra-btn ${isEquipped ? 'ultra-btn--ghost' : 'ultra-btn--primary'}`;
-      btn.textContent = isEquipped ? 'Equipaggiato' : 'Equipaggia';
-      btn.disabled = isEquipped;
-      btn.addEventListener('click', async () => {
+  const applyEquippedItem = async (
+    category: Exclude<LockerCategoryId, 'crate'>,
+    itemId: string
+  ): Promise<void> => {
+    if (busyAction) return;
+    busyAction = true;
+    const displayName = CATALOG_BY_ID[itemId]?.name ?? itemId;
+    paint();
+
+    try {
+      if (category === 'theme') {
+        const cur = getEconomySnapshot();
+        setEconomySnapshot({
+          ...cur,
+          loadout: { ...cur.loadout, theme: itemId },
+        });
+        if (typeof document !== 'undefined' && document.body) {
+          document.body.dataset['arenaTheme'] = itemId;
+        }
+      } else {
         try {
-          const res = await equipInventoryItem(slot, entry.itemId);
-          setEconomySnapshot({ ...getEconomySnapshot(), loadout: res.loadout });
+          const res = await equipInventoryItem(category, itemId);
+          const cur = getEconomySnapshot();
+          setEconomySnapshot({
+            ...cur,
+            loadout: {
+              ...res.loadout,
+              ...(cur.loadout.theme ? { theme: cur.loadout.theme } : {}),
+            },
+          });
         } catch {
           const cur = getEconomySnapshot();
           const nextLoadout: ClientLoadout = { ...cur.loadout };
-          if (slot === 'avatar') nextLoadout.avatar = entry.itemId;
-          if (slot === 'frame') nextLoadout.frame = entry.itemId;
-          if (slot === 'card_back') nextLoadout.cardStyle = entry.itemId;
-          if (slot === 'title') nextLoadout.title = entry.itemId;
+          if (category === 'avatar') nextLoadout.avatar = itemId;
+          if (category === 'frame') nextLoadout.frame = itemId;
+          if (category === 'card_back') nextLoadout.cardStyle = itemId;
+          if (category === 'title') nextLoadout.title = itemId;
           setEconomySnapshot({ ...cur, loadout: nextLoadout });
         }
-        feedback.textContent = `Equipaggiato ${meta?.name ?? entry.itemId}!`;
-        paint();
-      });
-
-      card.appendChild(btn);
-      grid.appendChild(card);
+      }
+      statusMessage = `Equipaggiato ${displayName}!`;
+      playEarcon('confirm');
+      announce(statusMessage, 'polite');
+    } finally {
+      busyAction = false;
+      paint();
     }
   };
 
+  const redeemCrate = async (crateId: string): Promise<void> => {
+    if (busyAction || !isCrateId(crateId)) return;
+    busyAction = true;
+    statusMessage = 'Apertura cassa in corso…';
+    paint();
+
+    try {
+      const res = await openTournamentCrate(crateId);
+      const cur = getEconomySnapshot();
+      setEconomySnapshot({ ...cur, vcard: res.vcardAfter });
+      patchProfile({ vcard: res.vcardAfter });
+
+      try {
+        const inv = await fetchInventory();
+        const latest = getEconomySnapshot();
+        setEconomySnapshot({
+          ...latest,
+          loadout: {
+            ...inv.loadout,
+            theme: latest.loadout.theme ?? 'theme_default',
+          },
+          items: inv.items.map((r) => ({
+            itemId: r.item_id,
+            category: r.category,
+            quantity: r.quantity,
+          })),
+        });
+      } catch {
+        // non-fatal if refresh fails
+      }
+
+      statusMessage = `Estratto: ${res.droppedItem.name} (${res.droppedItem.rarity.toUpperCase()})${
+        res.duplicate ? ` — Doppione rimborsato +${res.refundVCard} V-Card` : ''
+      }`;
+      playEarcon('win');
+      announce(statusMessage, 'assertive');
+    } catch (err) {
+      statusMessage =
+        err instanceof Error ? err.message : 'Apertura cassa non riuscita.';
+      playEarcon('error');
+      announce(statusMessage, 'assertive');
+    } finally {
+      busyAction = false;
+      paint();
+    }
+  };
+
+  const paint = (focusActiveCategory = false): void => {
+    const snap = getEconomySnapshot();
+    const categoryItems = filterOwnedByCategory(snap.items, activeCategory);
+    if (
+      !selectedItemId ||
+      !categoryItems.some((entry) => entry.itemId === selectedItemId)
+    ) {
+      selectedItemId = pickDefaultSelection(
+        activeCategory,
+        categoryItems,
+        snap.loadout
+      );
+    }
+
+    const selectedEntry =
+      categoryItems.find((entry) => entry.itemId === selectedItemId) ?? null;
+
+    // ── Left Column: Categories & Active Loadout ─────────────────
+    sidebar.innerHTML = '';
+
+    const sideHead = document.createElement('div');
+    sideHead.className = 'locker-sidebar-head';
+    const sideTitle = document.createElement('h2');
+    sideTitle.className = 'locker-sidebar-title';
+    sideTitle.textContent = 'ARMADIETTO';
+    const sideSub = document.createElement('span');
+    sideSub.className = 'locker-sidebar-sub';
+    sideSub.textContent = 'Personalizza Profilo & Tavolo';
+    sideHead.append(sideTitle, sideSub);
+
+    const catList = document.createElement('div');
+    catList.className = 'locker-cat-list';
+    catList.setAttribute('role', 'tablist');
+    catList.setAttribute('aria-orientation', 'vertical');
+    catList.setAttribute('aria-label', 'Categorie Armadietto');
+
+    catList.addEventListener('keydown', (ev) => {
+      if (hasBlockedModifier(ev)) return;
+      if (ev.key !== 'ArrowUp' && ev.key !== 'ArrowDown') return;
+      ev.preventDefault();
+      const curIdx = LOCKER_CATEGORIES.findIndex((c) => c.id === activeCategory);
+      const delta = ev.key === 'ArrowDown' ? 1 : -1;
+      const { index, wrapped } = computeSafeLoopIndex(
+        curIdx,
+        delta,
+        LOCKER_CATEGORIES.length
+      );
+      const next = LOCKER_CATEGORIES[index];
+      if (next) {
+        activeCategory = next.id;
+        selectedItemId = null;
+        statusMessage = '';
+        playEarcon(wrapped ? 'boundary' : 'nav');
+        announce(`Categoria ${next.label}`, 'polite');
+        paint(true);
+      }
+    });
+
+    for (const cat of LOCKER_CATEGORIES) {
+      const count = filterOwnedByCategory(snap.items, cat.id).length;
+      const isSelected = cat.id === activeCategory;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `locker-cat-btn${isSelected ? ' active' : ''}`;
+      btn.setAttribute('role', 'tab');
+      btn.setAttribute('aria-selected', String(isSelected));
+      btn.tabIndex = isSelected ? 0 : -1;
+
+      const labelWrap = document.createElement('span');
+      labelWrap.className = 'locker-cat-label';
+      const iconSpan = document.createElement('span');
+      iconSpan.className = 'locker-cat-icon';
+      iconSpan.setAttribute('aria-hidden', 'true');
+      iconSpan.textContent = cat.shortIcon;
+      const textSpan = document.createElement('span');
+      textSpan.textContent = cat.label;
+      labelWrap.append(iconSpan, textSpan);
+
+      const countBadge = document.createElement('span');
+      countBadge.className = 'locker-cat-count';
+      countBadge.textContent = String(count);
+
+      btn.append(labelWrap, countBadge);
+      btn.addEventListener('click', () => {
+        if (activeCategory === cat.id) return;
+        activeCategory = cat.id;
+        selectedItemId = null;
+        statusMessage = '';
+        playEarcon('nav');
+        announce(`Categoria ${cat.label}`, 'polite');
+        paint(true);
+      });
+
+      catList.appendChild(btn);
+      if (focusActiveCategory && isSelected) {
+        btn.focus();
+      }
+    }
+
+    const loadoutBox = document.createElement('div');
+    loadoutBox.className = 'locker-loadout-summary';
+    const loadoutHead = document.createElement('div');
+    loadoutHead.className = 'locker-loadout-heading';
+    loadoutHead.textContent = 'LOADOUT ATTIVO';
+    loadoutBox.appendChild(loadoutHead);
+
+    const summarySlots: Array<[string, string]> = [
+      ['Avatar', resolveDisplayName(snap.loadout.avatar)],
+      ['Dorso', resolveDisplayName(snap.loadout.cardStyle)],
+      ['Cornice', resolveDisplayName(snap.loadout.frame)],
+      ['Tavolo', resolveDisplayName(snap.loadout.theme)],
+      ['Titolo', resolveDisplayName(snap.loadout.title)],
+    ];
+    for (const [slotName, slotValue] of summarySlots) {
+      const row = document.createElement('div');
+      row.className = 'locker-loadout-row';
+      const k = document.createElement('span');
+      k.textContent = slotName;
+      const v = document.createElement('strong');
+      v.textContent = slotValue;
+      row.append(k, v);
+      loadoutBox.appendChild(row);
+    }
+
+    sidebar.append(sideHead, catList, loadoutBox);
+
+    // ── Center Column: Holographic Showcase Pedestal ───────────────
+    pedestalCol.innerHTML = '';
+
+    const stage = document.createElement('div');
+    const selectedMeta = selectedEntry ? CATALOG_BY_ID[selectedEntry.itemId] : undefined;
+    const selectedRarity: CosmeticRarity = selectedEntry
+      ? resolveItemRarity(selectedEntry.itemId)
+      : 'rare';
+
+    stage.className = `locker-pedestal-stage locker-pedestal-stage--${selectedRarity}`;
+
+    if (selectedEntry) {
+      const topBadges = document.createElement('div');
+      topBadges.className = 'locker-pedestal-badges';
+      const rarityPill = document.createElement('span');
+      rarityPill.className = `shop-rarity-pill shop-rarity-pill--${selectedRarity}`;
+      rarityPill.textContent = selectedRarity.toUpperCase();
+      topBadges.appendChild(rarityPill);
+
+      const qtyPill = document.createElement('span');
+      qtyPill.className = 'shop-tag-pill shop-tag-pill--owned';
+      qtyPill.textContent =
+        activeCategory === 'crate'
+          ? `DISPONIBILI ×${selectedEntry.quantity}`
+          : `POSSEDUTO ×${selectedEntry.quantity}`;
+      topBadges.appendChild(qtyPill);
+
+      const holoBeam = document.createElement('div');
+      holoBeam.className = 'locker-holo-beam';
+      holoBeam.setAttribute('aria-hidden', 'true');
+
+      const artHost = document.createElement('div');
+      artHost.className = 'locker-pedestal-art';
+      artHost.innerHTML = getShopItemArtworkSvg(
+        selectedEntry.itemId,
+        activeCategory
+      );
+
+      const rings = document.createElement('div');
+      rings.className = 'locker-pedestal-rings';
+      rings.setAttribute('aria-hidden', 'true');
+
+      const info = document.createElement('div');
+      info.className = 'locker-pedestal-info';
+      const title = document.createElement('h2');
+      title.className = 'locker-pedestal-title';
+      title.textContent = selectedMeta?.name ?? selectedEntry.itemId;
+      const desc = document.createElement('p');
+      desc.className = 'locker-pedestal-desc';
+      desc.textContent =
+        selectedMeta?.description ?? 'Cosmetico sbloccato nel tuo profilo.';
+      info.append(title, desc);
+
+      const equipped = isItemEquippedInLoadout(
+        selectedEntry.itemId,
+        activeCategory,
+        snap.loadout
+      );
+      const actionState = getPedestalActionState(activeCategory, equipped);
+
+      const actionBtn = document.createElement('button');
+      actionBtn.type = 'button';
+      actionBtn.className = `locker-action-btn ${
+        activeCategory === 'crate'
+          ? 'locker-action-btn--crate'
+          : actionState.actionable
+            ? 'locker-action-btn--equip'
+            : 'locker-action-btn--equipped'
+      }`;
+      actionBtn.textContent = busyAction ? 'ELABORAZIONE…' : actionState.label;
+
+      if (!actionState.actionable || busyAction) {
+        actionBtn.setAttribute('aria-disabled', 'true');
+      }
+
+      actionBtn.addEventListener('click', () => {
+        if (busyAction) return;
+        if (!actionState.actionable) {
+          playEarcon('nav');
+          announce(`${title.textContent} è già equipaggiato`, 'polite');
+          return;
+        }
+        if (activeCategory === 'crate') {
+          void redeemCrate(selectedEntry.itemId);
+        } else {
+          void applyEquippedItem(activeCategory, selectedEntry.itemId);
+        }
+      });
+
+      stage.append(topBadges, holoBeam, artHost, rings, info, actionBtn);
+    } else {
+      const catLabel =
+        LOCKER_CATEGORIES.find((c) => c.id === activeCategory)?.label ??
+        activeCategory;
+      const emptyWrap = document.createElement('div');
+      emptyWrap.className = 'locker-pedestal-empty';
+
+      const holoBeam = document.createElement('div');
+      holoBeam.className = 'locker-holo-beam';
+      holoBeam.setAttribute('aria-hidden', 'true');
+
+      const emptyArt = document.createElement('div');
+      emptyArt.className = 'locker-pedestal-art is-empty';
+      emptyArt.innerHTML = getShopItemArtworkSvg('unknown', activeCategory);
+
+      const rings = document.createElement('div');
+      rings.className = 'locker-pedestal-rings';
+      rings.setAttribute('aria-hidden', 'true');
+
+      const emptyTitle = document.createElement('h2');
+      emptyTitle.className = 'locker-pedestal-title';
+      emptyTitle.textContent = `Nessun elemento in ${catLabel}`;
+
+      const emptyDesc = document.createElement('p');
+      emptyDesc.className = 'locker-pedestal-desc';
+      emptyDesc.textContent =
+        'Sblocca nuovi cosmetici nel Negozio Cosmetico o avanzando nella Battle Card.';
+
+      const goShopBtn = document.createElement('button');
+      goShopBtn.type = 'button';
+      goShopBtn.className = 'locker-action-btn locker-action-btn--equip';
+      goShopBtn.textContent = 'VAI AL NEGOZIO';
+      goShopBtn.addEventListener('click', () => {
+        playEarcon('nav');
+        window.location.hash = '#negozio';
+      });
+
+      emptyWrap.append(holoBeam, emptyArt, rings, emptyTitle, emptyDesc, goShopBtn);
+      stage.appendChild(emptyWrap);
+    }
+
+    const feedbackBar = document.createElement('div');
+    feedbackBar.className = 'tab-feedback locker-feedback';
+    feedbackBar.textContent = statusMessage;
+    pedestalCol.append(stage, feedbackBar);
+
+    // ── Right Column: Rarity-Bordered Inventory Grid ───────────────
+    gridCol.innerHTML = '';
+
+    const activeCatLabel =
+      LOCKER_CATEGORIES.find((c) => c.id === activeCategory)?.label ??
+      activeCategory;
+
+    const gridHeader = document.createElement('div');
+    gridHeader.className = 'locker-grid-header';
+    const gridTitle = document.createElement('span');
+    gridTitle.className = 'locker-grid-title';
+    gridTitle.textContent = activeCatLabel.toUpperCase();
+    const gridCount = document.createElement('span');
+    gridCount.className = 'locker-grid-count';
+    gridCount.textContent =
+      activeCategory === 'crate'
+        ? `${categoryItems.length} casse disponibili`
+        : `${categoryItems.length} sbloccati`;
+    gridHeader.append(gridTitle, gridCount);
+
+    const invGrid = document.createElement('div');
+    invGrid.className = 'locker-inv-grid';
+
+    if (categoryItems.length === 0) {
+      const emptyCard = document.createElement('div');
+      emptyCard.className = 'locker-inv-empty';
+      emptyCard.textContent = `Nessun oggetto sbloccato nella categoria ${activeCatLabel}.`;
+      invGrid.appendChild(emptyCard);
+    } else {
+      for (const entry of categoryItems) {
+        const meta = CATALOG_BY_ID[entry.itemId];
+        const rarity = resolveItemRarity(entry.itemId);
+        const equipped = isItemEquippedInLoadout(
+          entry.itemId,
+          activeCategory,
+          snap.loadout
+        );
+        const isSelected = entry.itemId === selectedItemId;
+
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = `locker-inv-card locker-inv-card--${rarity}${
+          isSelected ? ' is-selected' : ''
+        }${equipped ? ' is-equipped' : ''}`;
+        card.setAttribute(
+          'aria-label',
+          `${meta?.name ?? entry.itemId}, rarità ${rarity}${
+            equipped ? ', equipaggiato' : ''
+          }`
+        );
+
+        const topRow = document.createElement('div');
+        topRow.className = 'shop-card-badges';
+        const rarityBadge = document.createElement('span');
+        rarityBadge.className = `shop-rarity-pill shop-rarity-pill--${rarity}`;
+        rarityBadge.textContent = rarity.toUpperCase();
+        topRow.appendChild(rarityBadge);
+
+        if (equipped) {
+          const activeBadge = document.createElement('span');
+          activeBadge.className = 'shop-tag-pill shop-tag-pill--owned';
+          activeBadge.textContent = 'ATTIVO';
+          topRow.appendChild(activeBadge);
+        } else if (entry.quantity > 1 || activeCategory === 'crate') {
+          const qtyBadge = document.createElement('span');
+          qtyBadge.className = 'shop-tag-pill shop-tag-pill--crate';
+          qtyBadge.textContent = `×${entry.quantity}`;
+          topRow.appendChild(qtyBadge);
+        }
+
+        const artThumb = document.createElement('div');
+        artThumb.className = `locker-inv-art shop-item-art--${rarity}`;
+        artThumb.innerHTML = getShopItemArtworkSvg(entry.itemId, activeCategory);
+
+        const nameEl = document.createElement('div');
+        nameEl.className = 'locker-inv-name';
+        nameEl.textContent = meta?.name ?? entry.itemId;
+
+        card.append(topRow, artThumb, nameEl);
+
+        card.addEventListener('click', () => {
+          selectedItemId = entry.itemId;
+          playEarcon('nav');
+          announce(
+            `Selezionato ${meta?.name ?? entry.itemId}, ${rarity}`,
+            'polite'
+          );
+          paint();
+        });
+
+        card.addEventListener('dblclick', () => {
+          if (activeCategory !== 'crate' && !equipped) {
+            void applyEquippedItem(activeCategory, entry.itemId);
+          }
+        });
+
+        invGrid.appendChild(card);
+      }
+    }
+
+    gridCol.append(gridHeader, invGrid);
+  };
+
   paint();
+
   void fetchInventory()
     .then((res) => {
       const cur = getEconomySnapshot();
       setEconomySnapshot({
         ...cur,
-        loadout: res.loadout,
+        loadout: {
+          ...res.loadout,
+          theme: cur.loadout.theme ?? 'theme_default',
+        },
         items: res.items.map((r) => ({
           itemId: r.item_id,
           category: r.category,
@@ -128,6 +561,5 @@ export function createLockerView(): HTMLElement {
     })
     .catch(() => {});
 
-  root.append(header, feedback, grid);
   return root;
 }

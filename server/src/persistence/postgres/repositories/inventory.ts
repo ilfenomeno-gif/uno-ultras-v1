@@ -42,7 +42,7 @@ export async function getPlayerInventory(playerId: string): Promise<InventoryIte
   const res = await query<InventoryItemRow>(
     `SELECT player_id, item_id, category, quantity, acquired_at, updated_at
        FROM player_inventory
-      WHERE player_id = $1
+      WHERE player_id = $1 AND quantity > 0
       ORDER BY acquired_at DESC`,
     [playerId],
   );
@@ -235,8 +235,33 @@ export async function openCatalogCrate(
     );
     const cur = lockRes.rows[0]?.vcard;
     if (cur === undefined) throw new Error(`Player ${playerId} not found`);
-    if (Number(cur) < crate.priceVCard) {
-      throw new InsufficientFundsError('vcard', crate.priceVCard, Number(cur));
+
+    const ownedCrateRes = await client.query<{ quantity: number }>(
+      `SELECT quantity FROM player_inventory WHERE player_id = $1 AND item_id = $2 FOR UPDATE`,
+      [playerId, crateId],
+    );
+    const ownedCrateQty = ownedCrateRes.rows[0]?.quantity ?? 0;
+    const redeemOwnedCrate = ownedCrateQty >= 1;
+    const crateCost = redeemOwnedCrate ? 0 : crate.priceVCard;
+
+    if (Number(cur) < crateCost) {
+      throw new InsufficientFundsError('vcard', crateCost, Number(cur));
+    }
+
+    if (redeemOwnedCrate) {
+      if (ownedCrateQty === 1) {
+        await client.query(
+          `DELETE FROM player_inventory WHERE player_id = $1 AND item_id = $2`,
+          [playerId, crateId],
+        );
+      } else {
+        await client.query(
+          `UPDATE player_inventory
+              SET quantity = quantity - 1, updated_at = NOW()
+            WHERE player_id = $1 AND item_id = $2`,
+          [playerId, crateId],
+        );
+      }
     }
 
     const ownedRes = await client.query<{ quantity: number }>(
@@ -245,7 +270,7 @@ export async function openCatalogCrate(
     );
     const duplicate = (ownedRes.rows[0]?.quantity ?? 0) > 0;
     const refund = duplicate ? dropped.duplicateRefundVCard : 0;
-    const vcardAfter = Number(cur) - crate.priceVCard + refund;
+    const vcardAfter = Number(cur) - crateCost + refund;
 
     await client.query(`UPDATE players SET vcard = $1, updated_at = NOW() WHERE id = $2`, [
       vcardAfter,
@@ -264,10 +289,10 @@ export async function openCatalogCrate(
        VALUES ($1, 'crate_open', 'vcard', $2, $3, $4, $5::jsonb)`,
       [
         playerId,
-        -crate.priceVCard + refund,
+        -crateCost + refund,
         vcardAfter,
         dropped.id,
-        JSON.stringify({ crateId, duplicate, refund }),
+        JSON.stringify({ crateId, redeemedOwnedCrate: redeemOwnedCrate, duplicate, refund }),
       ],
     );
     await client.query('COMMIT');

@@ -4,7 +4,19 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
-## Sessione 2026-11-24 (Parte 2) — Redesign Negozio Cosmetico Arcade Neon
+## Sessione 2026-11-24 (Parte 3) — Armadietto Olografico a 3 Colonne & Riscatto Casse
+
+- **Obiettivo**: progettare la schermata `Armadietto` a tre colonne (menu categorie a sinistra con `Avatar`, `Dorsi Carte`, `Cornici`, `Tavoli`, `Titoli`, `Casse`; vetrina centrale su piedistallo olografico con pulsante dinamico `EQUIPAGGIATO` / `EQUIPAGGIA` / `APRI CASSA`; griglia inventario a destra con cornici e targhette rarità), aggiungere il riscatto a costo `0` delle casse possedute lato server e lo slot `theme` nello store client.
+- **Stato Lavori**:
+  - `[x]` Riscatto atomico casse già possedute (`crateCost = 0`) e filtro `quantity > 0` in `server/src/persistence/postgres/repositories/inventory.ts`, più slot `theme` in `client/src/state/inventory-store.ts`.
+  - `[x]` Logica pura e testabile in `client/src/ui/navigation/locker-helpers.ts` e vista 3 colonne completa in `client/src/ui/navigation/tab-locker.ts` (Safe Loop verticale, Zero Focus Drop, `AriaLiveOrchestrator`, earcons, unboxing casse live).
+  - `[x]` Layout 3 colonne e stile piedistallo olografico + griglia rarità in `client/src/styles/shop.css`, più rimozione direttiva esterna non usata `# syntax=docker/dockerfile:1.7` dai Dockerfile di `server` e `client`.
+  - `[x]` Test in `client/tests/locker-state.test.ts` (`4` test) e `npm run ci` verde (`17` suite Vitest / `130` test passati: shared `74`, server `33`, client `23`; Vite `168` moduli; `0` errori ESLint/TS) + integrità `contenuto-game.md` (`83CAE3C057B35C22B460CC6F61BCF11AA355D1DB5F9EB4F2EC40517B2A1BD4D9`).
+  - `[x]` Aggiornamento offline immagini Docker `uno-ultra-server` / `uno-ultra-client` dai build verificati e riavvio completo dei 5 container (`uno-client`, `uno-server`, `uno-postgres`, `uno-redis`, `uno-coturn`).
+
+---
+
+## Sessione 2026-11-24 (Parte 2) — Redesign Negozio Cosmetico Arcade Neon (`1d36046`, `87805a3`)
 
 - **Obiettivo**: applicare il concept arcade/cyberpunk a schermo pieno nel tab Negozio con illustrazioni dedicate per ciascuno dei 13 oggetti, bordi e bagliori legati alla rarità (`common`, `rare`, `epic`, `legendary`, `mythic` prismatico), top-bar angolata competitiva e badge luminosi per valute e casse.
 - **Stato Lavori**:

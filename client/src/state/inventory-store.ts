@@ -15,6 +15,7 @@ export interface ClientLoadout {
   frame: string;
   cardStyle: string;
   title: string;
+  theme?: string;
 }
 
 export interface EconomyClientSnapshot {
@@ -33,6 +34,7 @@ const DEFAULT_SNAPSHOT: EconomyClientSnapshot = {
     frame: 'frame_default',
     cardStyle: 'back_default',
     title: 't1',
+    theme: 'theme_default',
   },
 };
 

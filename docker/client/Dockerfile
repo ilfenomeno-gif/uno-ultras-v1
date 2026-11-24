@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-
 # ---------- Build ----------
 FROM node:24-alpine AS build
 WORKDIR /app
