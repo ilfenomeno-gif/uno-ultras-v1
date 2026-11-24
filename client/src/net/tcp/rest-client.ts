@@ -269,7 +269,7 @@ export async function fetchChallenges(): Promise<{
   challenges: readonly {
     definition: {
       id: string;
-      period: 'daily' | 'weekly';
+      period: 'daily' | 'weekly' | 'seasonal';
       title: string;
       description: string;
       target: number;

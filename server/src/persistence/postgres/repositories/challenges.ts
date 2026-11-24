@@ -4,8 +4,10 @@
 
 import {
   DAILY_CHALLENGES_POOL,
+  SEASONAL_CHALLENGES_POOL,
   WEEKLY_CHALLENGES_POOL,
   type ChallengeDefinition,
+  type ChallengePeriod,
 } from '@uno/shared';
 import { getPostgresPool, query } from '../client.js';
 import { addBattleCardXp } from './battle-card.js';
@@ -20,13 +22,20 @@ export interface PlayerChallengeStatus {
 const ALL_CHALLENGES: readonly ChallengeDefinition[] = [
   ...DAILY_CHALLENGES_POOL,
   ...WEEKLY_CHALLENGES_POOL,
+  ...SEASONAL_CHALLENGES_POOL,
 ];
 
-function computeResetDate(period: 'daily' | 'weekly'): Date {
+function computeResetDate(period: ChallengePeriod): Date {
   const now = new Date();
   if (period === 'daily') {
     const next = new Date(now);
     next.setUTCHours(24, 0, 0, 0);
+    return next;
+  }
+  if (period === 'seasonal') {
+    const next = new Date(now);
+    next.setUTCDate(now.getUTCDate() + 90);
+    next.setUTCHours(0, 0, 0, 0);
     return next;
   }
   const daysUntilMonday = (8 - now.getUTCDay()) % 7 || 7;

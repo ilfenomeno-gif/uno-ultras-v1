@@ -4,7 +4,18 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
-## Sessione 2026-11-24 (Parte 4) — Caricamento Sincrono Schede & Error Boundary
+## Sessione 2026-11-24 (Parte 5) — Schermata Sfide Stagionale, Filtri Temporali & Ricompense
+
+- **Obiettivo**: progettare la schermata `Sfide` coerente con lo sfondo stellato di UNO ULTRA, dotata di banner stagionale (`STAGIONE 1 ATTIVA — Scala la classifica fino a Supersonic Legend (1600+ MMR)!`), filtri temporali `Giornalieri` / `Settimanali` / `Stagionali` e card con progresso, chip XP / V-Card e pulsante `Riscatta`.
+- **Stato Lavori**:
+  - `[x]` Contratto `SEASONAL_CHALLENGES_POOL` (`seasonal`) in `shared/src/types/economy.ts`, migrazione SQL idempotente `server/src/persistence/postgres/migrations/0009_seasonal_challenges.sql`, repository `server/src/persistence/postgres/repositories/challenges.ts` e tipo in `client/src/net/tcp/rest-client.ts`.
+  - `[x]` Helper puri in `client/src/ui/navigation/challenges-helpers.ts`, nuova vista in `client/src/ui/navigation/tab-challenges.ts` (banner stagionale, tab Safe Loop, Zero Focus Drop, aggiornamento saldo V-Card, `AriaLiveOrchestrator`, earcons) e tema stellato in `client/src/styles/shop.css`.
+  - `[x]` Test in `client/tests/challenges-state.test.ts` (`5` test) e `npm run ci` verde (`18` suite Vitest / `135` test passati: shared `74`, server `33`, client `28`; `0` errori ESLint/TS) + SHA-256 `contenuto-game.md` invariato (`83CAE3C057B35C22B460CC6F61BCF11AA355D1DB5F9EB4F2EC40517B2A1BD4D9`).
+  - `[ ]` Aggiornamento container Docker (`uno-server`, `uno-client`) da eseguire con Docker Desktop avviato dall'utente.
+
+---
+
+## Sessione 2026-11-24 (Parte 4) — Caricamento Sincrono Schede & Error Boundary (`1d24ae3`)
 
 - **Obiettivo**: eliminare il rischio di schermate bianche su `Negozio`, `Armadietto`, `Battle Card`, `Sfide`, `Tornei`, `Carriera` e `V-Card` dovute a import dinamici non gestiti o chunk scaduti dopo rebuild/arresto container.
 - **Stato Lavori**:

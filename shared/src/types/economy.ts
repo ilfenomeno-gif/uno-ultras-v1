@@ -230,7 +230,7 @@ export const BATTLE_CARD_REWARDS: readonly BattleCardRewardTier[] = Array.from(
 
 // ── Challenges ────────────────────────────────────────────────
 
-export type ChallengePeriod = 'daily' | 'weekly';
+export type ChallengePeriod = 'daily' | 'weekly' | 'seasonal';
 
 export interface ChallengeDefinition {
   readonly id: string;
@@ -306,6 +306,39 @@ export const WEEKLY_CHALLENGES_POOL: readonly ChallengeDefinition[] = [
     target: 8,
     rewardXp: 1800,
     rewardVCard: 175,
+  },
+];
+
+export const SEASONAL_CHALLENGES_POOL: readonly ChallengeDefinition[] = [
+  {
+    id: 'seasonal_win_50',
+    period: 'seasonal',
+    title: 'Leggenda della Stagione',
+    description: 'Vinci 50 partite classificate o standard durante la Stagione 1.',
+    metric: 'matches_won',
+    target: 50,
+    rewardXp: 5000,
+    rewardVCard: 500,
+  },
+  {
+    id: 'seasonal_cards_1000',
+    period: 'seasonal',
+    title: 'Dominatore del Tavolo',
+    description: 'Gioca 1.000 carte complessive nella Stagione 1.',
+    metric: 'cards_played',
+    target: 1000,
+    rewardXp: 4000,
+    rewardVCard: 400,
+  },
+  {
+    id: 'seasonal_stacks_35',
+    period: 'seasonal',
+    title: 'Maestro dello Stacking',
+    description: 'Concatena 35 carte +2/+4 contro gli avversari in Stagione 1.',
+    metric: 'draw_stacks',
+    target: 35,
+    rewardXp: 3500,
+    rewardVCard: 350,
   },
 ];
 
