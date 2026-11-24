@@ -10,6 +10,7 @@ import './styles/lobby.css';
 import './styles/social.css';
 import './styles/game.css';
 import './styles/shop.css';
+import './styles/battle-card.css';
 import './styles/tournaments.css';
 import './styles/minigames.css';
 

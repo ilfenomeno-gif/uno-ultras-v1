@@ -4,7 +4,18 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
-## Sessione 2026-11-24 (Parte 10) — Fix Loop Uscita, Schermate Vittoria & Sistema Progressione MCP Unificato
+## Sessione 2026-11-24 (Parte 11) — Redesign Battle Pass / Battle Card ("Neon Stadium Season Pass")
+
+- **Obiettivo**: riprogettare esclusivamente la schermata `Battle Card / Battle Pass` con estetica gaming competitiva *Neon Stadium Season Pass* (`#07152E`, `#10264A`, `#1B3558`, `#25D9F2`, `#28E6A0`, `#FFD32A`, `#985BFF`), sotto-navigazione stagionale (`PRE-SEASON`, `QUALIFIERS`, `CHAMPIONSHIP`) con comandi `LB/RB`, progressione Livello/XP separata dalla barra dei Tier sbloccati, tracciato orizzontale di card verticali scorrevoli con mouse/touch/tastiera/controller, pannello Pass Premium separato e barra comandi inferiore contestuale.
+- **Stato Lavori**:
+  - `[x]` Helper puri in `client/src/ui/navigation/battle-card-helpers.ts` (`BATTLE_PASS_PHASES`, `buildBattlePassCards`, `computeBattlePassMetrics`, `getVCardRewardArtworkSvg`, `getStadiumHeroArtworkSvg`) basati esclusivamente su `BATTLE_CARD_REWARDS` e `CATALOG_BY_ID` reali senza inventare premi, prezzi o date.
+  - `[x]` Foglio di stile dedicato `client/src/styles/battle-card.css` importato in `client/src/main.ts`, con focus ad alto contrasto, stati distinguibili anche via icone/testo (`✓ Riscattata`, `★ Disponibile`, `🔒 Bloccata`), layout responsive desktop/tablet/mobile e `prefers-reduced-motion`.
+  - `[x]` Nuova vista in `client/src/ui/navigation/tab-battle-card.ts` collegata alle API reali (`fetchBattleCard`, `buyBattleCard`, `unlockAllBattleCard`, `claimBattleCardTier`), conferme lato server, `Zero Focus Drop`, `AriaLiveOrchestrator` ed earcons.
+  - `[x]` Test unitari in `client/tests/battle-card-state.test.ts` (`3` test) e `npm run ci` verde (**24 suite Vitest / 158 test passati**: shared `74`, server `37`, client `47`; `0` errori ESLint/TS; Vite `176` moduli `index-Crr05D3W.js` / `index-jVv6LGQQ.css`) + SHA-256 `contenuto-game.md` intatto (`83CAE3C057B35C22B460CC6F61BCF11AA355D1DB5F9EB4F2EC40517B2A1BD4D9`).
+
+---
+
+## Sessione 2026-11-24 (Parte 10) — Fix Loop Uscita, Schermate Vittoria & Sistema Progressione MCP Unificato (`a450002`, `98e8566`)
 
 - **Obiettivo**: risolvere il loop infinito `"Connessione alla partita…"` all'uscita dalla partita, aggiungere una vera schermata Vittoria/Sconfitta con accredito punti sia su UNO che sui 7 mini-giochi, e collegare un sistema MCP centrale tra **Rank**, **Match**, **MMR (Matchmaking)**, **Modalità**, **Sfide**, **Battle Card** e **Valute**.
 - **Stato Lavori**:
