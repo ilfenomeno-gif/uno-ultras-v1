@@ -1,73 +1,117 @@
 // ============================================================
-// UNO ULTRA Client — Carriera Tab (MMR Progression, Top 100, Stats, Replay)
+// UNO ULTRA Client — 3-Column Carriera Dashboard (Cosmetics, KPIs, History)
 // ============================================================
 
-import { getRankInfo } from '@uno/shared';
+import {
+  CATALOG_BY_ID,
+  getRankInfo,
+  SSL_MMR_THRESHOLD,
+} from '@uno/shared';
+import { announce } from '../../core/aria-live.js';
+import { playEarcon } from '../../core/audio-earcons.js';
 import {
   fetchCareerSummary,
+  fetchChallenges,
+  fetchInventory,
   fetchMatchReplay,
   fetchTopLeaderboard,
 } from '../../net/tcp/rest-client.js';
+import {
+  getEconomySnapshot,
+  setEconomySnapshot,
+} from '../../state/inventory-store.js';
 import { getProfile } from '../../state/profile-store.js';
 import { openModal } from '../components/modal.js';
-import { renderChallengerList, type ChallengerEntry } from '../tournament/challenger-list.js';
+import {
+  renderChallengerList,
+  type ChallengerEntry,
+} from '../tournament/challenger-list.js';
+import { getShopItemArtworkSvg } from './shop-artworks.js';
+import {
+  aggregateCareerStats,
+  computeSslProgressPercent,
+  formatMatchOutcome,
+  formatMmrDelta,
+  resolveCareerFrameClass,
+  type CareerModeStat,
+} from './career-helpers.js';
+
+interface RecentMatchItem {
+  readonly matchId: string;
+  readonly mode: string;
+  readonly variant: string;
+  readonly isRanked: boolean;
+  readonly placement: number;
+  readonly mmrDelta: number;
+  readonly vcardEarned: number;
+}
+
+const SPECIAL_CHALLENGE_IDS = new Set([
+  'daily_uno_2',
+  'weekly_stacks_8',
+  'seasonal_stacks_35',
+]);
 
 export function createCareerView(): HTMLElement {
   const root = document.createElement('section');
-  root.className = 'tab-section';
+  root.className = 'tab-section career-stage';
+  root.setAttribute('aria-label', 'Carriera Competitiva UNO ULTRA');
 
   const profile = getProfile();
+  const username = profile?.username ?? 'Contendente';
   const mmr = profile?.mmr ?? 0;
   const rankInfo = getRankInfo(mmr);
   const nextThreshold = rankInfo.maxMMR !== null ? rankInfo.maxMMR + 1 : null;
   const mmrToNextTier = nextThreshold !== null ? Math.max(0, nextThreshold - mmr) : 0;
-  const span = nextThreshold !== null ? Math.max(1, nextThreshold - rankInfo.minMMR) : 1;
-  const progressPercent =
+  const tierSpan =
+    nextThreshold !== null ? Math.max(1, nextThreshold - rankInfo.minMMR) : 1;
+  const tierPercent =
     nextThreshold !== null
-      ? Math.min(100, Math.max(0, Math.round(((mmr - rankInfo.minMMR) / span) * 100)))
+      ? Math.min(100, Math.max(0, Math.round(((mmr - rankInfo.minMMR) / tierSpan) * 100)))
       : 100;
+  const sslPercent = computeSslProgressPercent(mmr);
 
-  const summary = document.createElement('div');
-  summary.className = 'tab-status-bar glass-panel';
-  const sumLeft = document.createElement('div');
-  const sumTitle = document.createElement('strong');
-  sumTitle.textContent = 'CARRIERA GIOCATORE';
-  const sumTier = document.createElement('b');
-  sumTier.style.color = rankInfo.colorHex;
-  sumTier.textContent = rankInfo.tier;
-  sumLeft.append(
-    sumTitle,
-    document.createTextNode(' — Tier '),
-    sumTier,
-    document.createTextNode(` (${mmr} MMR · ${progressPercent}% verso il prossimo grado)`),
-  );
-  const sumRight = document.createElement('div');
-  sumRight.className = 'wallet-pills';
-  const sumBadge = document.createElement('span');
-  sumBadge.className = 'ultra-badge ultra-badge--info';
-  sumBadge.textContent =
-    mmrToNextTier > 0 ? `${mmrToNextTier} MMR al prossimo tier` : 'APEX SSL';
-  sumRight.appendChild(sumBadge);
-  summary.append(sumLeft, sumRight);
+  let modeStats: CareerModeStat[] = [];
+  let recentMatches: RecentMatchItem[] = [];
+  let specialCardsPlayed = 0;
 
-  const statsBox = document.createElement('div');
-  statsBox.className = 'shop-grid';
-  const defaultCard = document.createElement('article');
-  defaultCard.className = 'ultra-card glass-panel';
-  const dTitle = document.createElement('h3');
-  dTitle.textContent = 'UNO Classic & Trofei';
-  const dSub = document.createElement('p');
-  dSub.textContent = 'Trofei sbloccati e storico partite autoritative.';
-  const dBadge = document.createElement('div');
-  dBadge.className = 'ultra-badge';
-  dBadge.textContent = `Rank Attuale: ${rankInfo.tier}`;
-  defaultCard.append(dTitle, dSub, dBadge);
-  statsBox.appendChild(defaultCard);
+  const layout = document.createElement('div');
+  layout.className = 'career-layout';
 
-  const recentBox = document.createElement('div');
-  recentBox.className = 'shop-grid';
+  const profileCol = document.createElement('aside');
+  profileCol.className = 'career-profile-col';
 
-  const openReplayViewer = (matchId: string, events: readonly Record<string, unknown>[]): void => {
+  const statsCol = document.createElement('div');
+  statsCol.className = 'career-stats-col';
+
+  const historyCol = document.createElement('div');
+  historyCol.className = 'career-history-col';
+
+  layout.append(profileCol, statsCol, historyCol);
+
+  const boardHead = document.createElement('div');
+  boardHead.className = 'tournament-section-head';
+  const boardHeading = document.createElement('h3');
+  boardHeading.textContent = 'Classifica Top 100 Globale';
+  const boardSub = document.createElement('span');
+  boardSub.textContent = `Soglia Supersonic Legend: ${SSL_MMR_THRESHOLD}+ MMR`;
+  boardHead.append(boardHeading, boardSub);
+
+  const boardContainer = document.createElement('div');
+  const fallbackBoard: ChallengerEntry[] = [
+    {
+      rank: 1,
+      username,
+      mmr,
+      rankTier: rankInfo.tier,
+    },
+  ];
+  boardContainer.appendChild(renderChallengerList(fallbackBoard));
+
+  const openReplayViewer = (
+    matchId: string,
+    events: readonly Record<string, unknown>[]
+  ): void => {
     let stepIdx = 0;
     const body = document.createElement('div');
     const stepText = document.createElement('pre');
@@ -108,18 +152,309 @@ export function createCareerView(): HTMLElement {
     openModal({ title: `Replay Partita ${matchId.slice(0, 8)}`, body });
   };
 
-  const boardHeading = document.createElement('h3');
-  boardHeading.textContent = 'Classifica Top 100 Globale';
-  const boardContainer = document.createElement('div');
-  const fallbackBoard: ChallengerEntry[] = [
-    {
-      rank: 1,
-      username: profile?.username ?? 'Player',
-      mmr,
-      rankTier: rankInfo.tier,
-    },
-  ];
-  boardContainer.appendChild(renderChallengerList(fallbackBoard));
+  const renderProfile = (): void => {
+    profileCol.innerHTML = '';
+    const { loadout } = getEconomySnapshot();
+    const avatarMeta = CATALOG_BY_ID[loadout.avatar];
+    const frameMeta = CATALOG_BY_ID[loadout.frame];
+    const titleMeta = CATALOG_BY_ID[loadout.title];
+
+    const avatarFrame = document.createElement('div');
+    avatarFrame.className = `career-avatar-frame ${resolveCareerFrameClass(loadout.frame)}`;
+    avatarFrame.innerHTML = getShopItemArtworkSvg(loadout.avatar, 'avatar');
+
+    const identity = document.createElement('div');
+    identity.className = 'career-identity';
+
+    const nameEl = document.createElement('h2');
+    nameEl.className = 'career-username';
+    nameEl.textContent = username;
+
+    const titlePill = document.createElement('span');
+    titlePill.className = 'career-title-pill';
+    titlePill.textContent = titleMeta?.name ?? 'Contendente UNO ULTRA';
+
+    const cosmeticMeta = document.createElement('span');
+    cosmeticMeta.className = 'career-cosmetic-sub';
+    cosmeticMeta.textContent = `${avatarMeta?.name ?? 'Avatar Classico'} · ${
+      frameMeta?.name ?? 'Cornice Base'
+    }`;
+
+    identity.append(nameEl, titlePill, cosmeticMeta);
+
+    const rankBox = document.createElement('div');
+    rankBox.className = 'career-rank-box';
+
+    const rankTop = document.createElement('div');
+    rankTop.className = 'career-rank-top';
+    const tierBadge = document.createElement('span');
+    tierBadge.className = 'career-rank-tier';
+    tierBadge.style.color = rankInfo.colorHex;
+    tierBadge.textContent = rankInfo.tier;
+    const mmrBadge = document.createElement('strong');
+    mmrBadge.className = 'career-rank-mmr';
+    mmrBadge.textContent = `${mmr} MMR`;
+    rankTop.append(tierBadge, mmrBadge);
+
+    const nextBarWrap = document.createElement('div');
+    nextBarWrap.className = 'challenge-progress-wrap';
+    const nextMeta = document.createElement('div');
+    nextMeta.className = 'challenge-progress-meta';
+    const nextLbl = document.createElement('span');
+    nextLbl.textContent =
+      mmrToNextTier > 0 ? `${mmrToNextTier} MMR al prossimo grado` : 'Grado Massimo SSL';
+    const nextPct = document.createElement('strong');
+    nextPct.textContent = `${tierPercent}%`;
+    nextMeta.append(nextLbl, nextPct);
+
+    const nextTrack = document.createElement('div');
+    nextTrack.className = 'challenge-progress-track';
+    const nextFill = document.createElement('div');
+    nextFill.className = 'challenge-progress-fill';
+    nextFill.style.width = `${tierPercent}%`;
+    nextTrack.appendChild(nextFill);
+    nextBarWrap.append(nextMeta, nextTrack);
+
+    const sslBarWrap = document.createElement('div');
+    sslBarWrap.className = 'challenge-progress-wrap';
+    const sslMeta = document.createElement('div');
+    sslMeta.className = 'challenge-progress-meta';
+    const sslLbl = document.createElement('span');
+    sslLbl.textContent = `Verso Supersonic Legend (${mmr}/${SSL_MMR_THRESHOLD})`;
+    const sslPct = document.createElement('strong');
+    sslPct.textContent = `${sslPercent}%`;
+    sslMeta.append(sslLbl, sslPct);
+
+    const sslTrack = document.createElement('div');
+    sslTrack.className = 'challenge-progress-track';
+    const sslFill = document.createElement('div');
+    sslFill.className = 'challenge-progress-fill career-ssl-fill';
+    sslFill.style.width = `${sslPercent}%`;
+    sslTrack.appendChild(sslFill);
+    sslBarWrap.append(sslMeta, sslTrack);
+
+    rankBox.append(rankTop, nextBarWrap, sslBarWrap);
+
+    const lockerBtn = document.createElement('button');
+    lockerBtn.type = 'button';
+    lockerBtn.className = 'ultra-btn ultra-btn--ghost career-locker-btn';
+    lockerBtn.textContent = 'Personalizza in Armadietto';
+    lockerBtn.addEventListener('click', () => {
+      playEarcon('nav');
+      announce('Apertura Armadietto', 'polite');
+      window.location.hash = '#armadietto';
+    });
+
+    profileCol.append(avatarFrame, identity, rankBox, lockerBtn);
+  };
+
+  const renderStats = (): void => {
+    statsCol.innerHTML = '';
+    const head = document.createElement('div');
+    head.className = 'career-col-header';
+    const h3 = document.createElement('h3');
+    h3.textContent = 'STATISTICHE PRINCIPALI';
+    const sub = document.createElement('span');
+    sub.textContent = `Grado: ${rankInfo.tier}`;
+    head.append(h3, sub);
+
+    const kpi = aggregateCareerStats(modeStats, specialCardsPlayed);
+
+    const kpiGrid = document.createElement('div');
+    kpiGrid.className = 'career-kpi-grid';
+
+    const tiles: ReadonlyArray<{
+      label: string;
+      value: string;
+      sub: string;
+      tone: 'cyan' | 'gold' | 'violet' | 'emerald';
+    }> = [
+      {
+        label: 'Partite Giocate',
+        value: String(kpi.totalMatches),
+        sub: `${modeStats.length || 1} modalità attive`,
+        tone: 'cyan',
+      },
+      {
+        label: 'Percentuale Vittorie',
+        value: `${kpi.winRatePercent}%`,
+        sub: `${kpi.totalWins} vittorie totali`,
+        tone: 'emerald',
+      },
+      {
+        label: 'Miglior Serie',
+        value: String(kpi.bestStreak),
+        sub: 'Vittorie consecutive',
+        tone: 'gold',
+      },
+      {
+        label: 'Carte Speciali Giocate',
+        value: String(kpi.specialCardsPlayed),
+        sub: '+2 / +4 / Chiamate UNO!',
+        tone: 'violet',
+      },
+    ];
+
+    for (const tile of tiles) {
+      const card = document.createElement('article');
+      card.className = `career-kpi-card career-kpi-card--${tile.tone}`;
+      const lbl = document.createElement('span');
+      lbl.className = 'career-kpi-label';
+      lbl.textContent = tile.label;
+      const val = document.createElement('strong');
+      val.className = 'career-kpi-value';
+      val.textContent = tile.value;
+      const hint = document.createElement('span');
+      hint.className = 'career-kpi-sub';
+      hint.textContent = tile.sub;
+      card.append(lbl, val, hint);
+      kpiGrid.appendChild(card);
+    }
+
+    const breakdownHead = document.createElement('div');
+    breakdownHead.className = 'career-sub-heading';
+    breakdownHead.textContent = 'RENDIMENTO PER MODALITÀ';
+
+    const modeList = document.createElement('div');
+    modeList.className = 'career-mode-list';
+
+    if (modeStats.length === 0) {
+      const emptyMode = document.createElement('div');
+      emptyMode.className = 'career-empty-note';
+      emptyMode.textContent =
+        'Completa la prima partita autoritativa per registrare le statistiche per modalità.';
+      modeList.appendChild(emptyMode);
+    } else {
+      for (const st of modeStats) {
+        const row = document.createElement('div');
+        row.className = 'career-mode-row';
+        const mName = document.createElement('strong');
+        mName.textContent = st.mode.toUpperCase();
+        const mMeta = document.createElement('span');
+        mMeta.textContent = `${st.matchesPlayed} partite · ${st.wins}V (${st.winRate}%) · Serie ${st.bestStreak}`;
+        row.append(mName, mMeta);
+        modeList.appendChild(row);
+      }
+    }
+
+    statsCol.append(head, kpiGrid, breakdownHead, modeList);
+  };
+
+  const renderHistory = (): void => {
+    historyCol.innerHTML = '';
+    const head = document.createElement('div');
+    head.className = 'career-col-header';
+    const h3 = document.createElement('h3');
+    h3.textContent = 'CRONOLOGIA ULTIME PARTITE';
+    const countSpan = document.createElement('span');
+    countSpan.textContent = `${recentMatches.length} recenti`;
+    head.append(h3, countSpan);
+
+    const listWrap = document.createElement('div');
+    listWrap.className = 'career-match-list';
+
+    if (recentMatches.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'career-empty-note';
+      empty.textContent =
+        'Nessuna partita recente ancora registrata su questo account.';
+      listWrap.appendChild(empty);
+    } else {
+      for (const rm of recentMatches.slice(0, 8)) {
+        const outcome = formatMatchOutcome(rm.placement);
+        const item = document.createElement('article');
+        item.className = `career-match-item ${outcome.won ? 'is-win' : 'is-loss'}`;
+
+        const top = document.createElement('div');
+        top.className = 'career-match-top';
+
+        const outcomePill = document.createElement('span');
+        outcomePill.className = `career-outcome-pill ${
+          outcome.won ? 'is-win' : 'is-loss'
+        }`;
+        outcomePill.textContent = `${outcome.label} · #${rm.placement}`;
+
+        const mmrDeltaEl = document.createElement('span');
+        mmrDeltaEl.className = `career-mmr-delta ${
+          rm.mmrDelta > 0 ? 'is-pos' : rm.mmrDelta < 0 ? 'is-neg' : ''
+        }`;
+        mmrDeltaEl.textContent = formatMmrDelta(rm.mmrDelta);
+
+        top.append(outcomePill, mmrDeltaEl);
+
+        const bottom = document.createElement('div');
+        bottom.className = 'career-match-bottom';
+
+        const modeInfo = document.createElement('span');
+        modeInfo.className = 'career-match-mode';
+        modeInfo.textContent = `${rm.mode.toUpperCase()} (${
+          rm.isRanked ? 'Ranked' : 'Standard'
+        }) · +${rm.vcardEarned} V-Card`;
+
+        const replayBtn = document.createElement('button');
+        replayBtn.type = 'button';
+        replayBtn.className = 'ultra-btn ultra-btn--ghost career-replay-btn';
+        replayBtn.textContent = 'Replay';
+        replayBtn.addEventListener('click', () => {
+          playEarcon('nav');
+          void fetchMatchReplay(rm.matchId)
+            .then((rp) => openReplayViewer(rm.matchId, rp.events))
+            .catch(() => openReplayViewer(rm.matchId, []));
+        });
+
+        bottom.append(modeInfo, replayBtn);
+        item.append(top, bottom);
+        listWrap.appendChild(item);
+      }
+    }
+
+    historyCol.append(head, listWrap);
+  };
+
+  renderProfile();
+  renderStats();
+  renderHistory();
+
+  void fetchInventory()
+    .then((res) => {
+      const cur = getEconomySnapshot();
+      setEconomySnapshot({
+        ...cur,
+        loadout: {
+          ...res.loadout,
+          theme: cur.loadout.theme ?? 'theme_default',
+        },
+        items: res.items.map((r) => ({
+          itemId: r.item_id,
+          category: r.category,
+          quantity: r.quantity,
+        })),
+      });
+      renderProfile();
+    })
+    .catch(() => {});
+
+  void fetchCareerSummary()
+    .then((res) => {
+      modeStats = [...res.modeStats];
+      recentMatches = [...res.recentMatches];
+      renderStats();
+      renderHistory();
+    })
+    .catch(() => {});
+
+  void fetchChallenges()
+    .then((res) => {
+      let sum = 0;
+      for (const ch of res.challenges) {
+        if (SPECIAL_CHALLENGE_IDS.has(ch.definition.id)) {
+          sum += ch.progress;
+        }
+      }
+      specialCardsPlayed = sum;
+      renderStats();
+    })
+    .catch(() => {});
 
   void fetchTopLeaderboard(100)
     .then((res) => {
@@ -130,49 +465,6 @@ export function createCareerView(): HTMLElement {
     })
     .catch(() => {});
 
-  void fetchCareerSummary()
-    .then((res) => {
-      if (res.modeStats.length > 0) {
-        statsBox.innerHTML = '';
-        for (const st of res.modeStats) {
-          const card = document.createElement('article');
-          card.className = 'ultra-card glass-panel';
-          const h3 = document.createElement('h3');
-          h3.textContent = st.mode.toUpperCase();
-          const p = document.createElement('p');
-          p.textContent = `${st.matchesPlayed} partite · ${st.wins} vittorie (${st.winRate}%)`;
-          const badge = document.createElement('span');
-          badge.className = 'ultra-badge ultra-badge--gold';
-          badge.textContent = `Miglior Serie: ${st.bestStreak}`;
-          card.append(h3, p, badge);
-          statsBox.appendChild(card);
-        }
-      }
-      if (res.recentMatches.length > 0) {
-        recentBox.innerHTML = '';
-        for (const rm of res.recentMatches.slice(0, 6)) {
-          const mc = document.createElement('article');
-          mc.className = 'ultra-card glass-panel';
-          const mh3 = document.createElement('h4');
-          mh3.textContent = `${rm.mode.toUpperCase()} (#${rm.placement})`;
-          const mp = document.createElement('p');
-          mp.textContent = `${rm.isRanked ? 'Ranked' : 'Casual'} · MMR ${rm.mmrDelta >= 0 ? `+${rm.mmrDelta}` : rm.mmrDelta} · +${rm.vcardEarned} V-Card`;
-          const rBtn = document.createElement('button');
-          rBtn.type = 'button';
-          rBtn.className = 'ultra-btn ultra-btn--ghost';
-          rBtn.textContent = 'Apri Replay';
-          rBtn.addEventListener('click', () => {
-            void fetchMatchReplay(rm.matchId)
-              .then((rp) => openReplayViewer(rm.matchId, rp.events))
-              .catch(() => openReplayViewer(rm.matchId, []));
-          });
-          mc.append(mh3, mp, rBtn);
-          recentBox.appendChild(mc);
-        }
-      }
-    })
-    .catch(() => {});
-
-  root.append(summary, statsBox, recentBox, boardHeading, boardContainer);
+  root.append(layout, boardHead, boardContainer);
   return root;
 }

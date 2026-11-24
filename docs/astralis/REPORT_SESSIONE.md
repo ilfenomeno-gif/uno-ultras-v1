@@ -4,7 +4,18 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
-## Sessione 2026-11-24 (Parte 6) — Schermata Tornei, Banner UCS Weekend & Casse Crediti Torneo
+## Sessione 2026-11-24 (Parte 7) — Schermata Carriera a 3 Colonne (Cosmetici, KPI & Cronologia)
+
+- **Obiettivo**: progettare la schermata `Carriera` a tre colonne allineata ai cosmetici equipaggiati in Armadietto (`avatar`, `frame`, `title`), progressione verso Supersonic Legend (`1600+ MMR`), griglia statistiche 2×2 ad alta leggibilità e cronologia partite con esito, delta MMR e Replay.
+- **Stato Lavori**:
+  - `[x]` Helper puri in `client/src/ui/navigation/career-helpers.ts` (`aggregateCareerStats`, `computeSslProgressPercent`, `resolveCareerFrameClass`, `formatMatchOutcome`, `formatMmrDelta`).
+  - `[x]` Nuova vista `Carriera` a 3 colonne in `client/src/ui/navigation/tab-career.ts` (identità estetica live da `inventory-store` / `fetchInventory`, cornice oro pulsante/prisma, barra MMR tier + SSL, griglia KPI 2×2 + rendimento per modalità, cronologia partite con `Replay` e Classifica Top 100) e stili in `client/src/styles/tournaments.css`.
+  - `[x]` Test in `client/tests/career-state.test.ts` (`4` test) e `npm run ci` verde (`20` suite Vitest / `143` test passati: shared `74`, server `33`, client `36`; `0` errori ESLint/TS) + SHA-256 `contenuto-game.md` intatto (`83CAE3C057B35C22B460CC6F61BCF11AA355D1DB5F9EB4F2EC40517B2A1BD4D9`).
+  - `[x]` Aggiornamento live di `uno-ultra-client` e riavvio container `uno-client` su Docker con tutti i 5 servizi attivi.
+
+---
+
+## Sessione 2026-11-24 (Parte 6) — Schermata Tornei, Banner UCS Weekend & Casse Crediti Torneo (`b25bd50`)
 
 - **Obiettivo**: implementare la schermata `Tornei` con banner evento principale (`TORNEO UCS WEEKEND` e conto alla rovescia), griglia tornei programmati per fascia (`Bronzo`, `Arena`, `SSL`), cassa adattiva al grado attuale e riscatto delle Casse Torneo con `Crediti Torneo` anche lato server.
 - **Stato Lavori**:
