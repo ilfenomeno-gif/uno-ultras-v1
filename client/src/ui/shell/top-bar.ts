@@ -3,6 +3,8 @@
 // ============================================================
 
 import type { AppRoute } from '../../core/router.js';
+import { playEarcon } from '../../core/audio-earcons.js';
+import { computeSafeLoopIndex, hasBlockedModifier } from '../../core/keyboard-nav.js';
 
 export interface TopTabItem {
   route: Exclude<AppRoute, 'splash' | 'auth' | 'game'>;
@@ -41,17 +43,42 @@ export function createTopBar(
 
   const nav = document.createElement('nav');
   nav.className = 'top-bar-tabs';
+  nav.setAttribute('role', 'tablist');
   nav.setAttribute('aria-label', 'Navigazione principale');
 
+  const tabButtons: HTMLButtonElement[] = [];
+
   for (const tab of TOP_TABS) {
+    const isActive = activeRoute === tab.route;
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = `top-bar-tab${activeRoute === tab.route ? ' active' : ''}`;
+    btn.className = `top-bar-tab${isActive ? ' active' : ''}`;
     btn.textContent = tab.label;
     btn.dataset['route'] = tab.route;
+    btn.setAttribute('role', 'tab');
+    btn.setAttribute('aria-selected', String(isActive));
+    btn.tabIndex = isActive ? 0 : -1;
     btn.addEventListener('click', () => callbacks.onSelectTab(tab.route));
+    tabButtons.push(btn);
     nav.appendChild(btn);
   }
+
+  nav.addEventListener('keydown', (ev) => {
+    if (hasBlockedModifier(ev)) return;
+    if (ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return;
+    ev.preventDefault();
+    const curIdx =
+      document.activeElement instanceof HTMLButtonElement
+        ? tabButtons.indexOf(document.activeElement)
+        : TOP_TABS.findIndex((t) => t.route === activeRoute);
+    const delta = ev.key === 'ArrowRight' ? 1 : -1;
+    const { index, wrapped } = computeSafeLoopIndex(curIdx, delta, tabButtons.length);
+    const nextBtn = tabButtons[index];
+    if (nextBtn) {
+      nextBtn.focus();
+      playEarcon(wrapped ? 'boundary' : 'nav');
+    }
+  });
 
   const actions = document.createElement('div');
   actions.className = 'top-bar-actions';

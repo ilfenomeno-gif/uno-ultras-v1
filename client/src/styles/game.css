@@ -215,13 +215,14 @@
   transition: transform 0.14s ease, box-shadow 0.14s ease;
 }
 
-.hint-btn:hover:not(:disabled) {
+.hint-btn:hover:not(:disabled):not(.is-disabled) {
   transform: translateY(-2px);
   box-shadow: 0 0 16px var(--color-cyan-glow);
 }
 
-.hint-btn:disabled {
-  opacity: 0.35;
+.hint-btn:disabled,
+.hint-btn.is-disabled {
+  opacity: 0.38;
   cursor: not-allowed;
 }
 
@@ -271,14 +272,42 @@
   transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
 }
 
-.uno-card:hover:not(:disabled) {
+.uno-card:hover:not(:disabled):not(.is-disabled) {
   transform: translateY(-10px) rotate(-1deg);
   box-shadow: 0 14px 28px rgba(245, 200, 66, 0.4);
 }
 
-.uno-card:disabled {
+.uno-card:disabled,
+.uno-card.is-disabled {
   cursor: not-allowed;
   filter: saturate(0.45) brightness(0.68);
+}
+
+.uno-card:focus-visible,
+.hint-btn:focus-visible,
+.wild-color-btn:focus-visible,
+.game-view__exit:focus-visible {
+  outline: 3px solid var(--color-gold);
+  outline-offset: 2px;
+}
+
+.uno-card__hotkey {
+  position: absolute;
+  top: 0.32rem;
+  right: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0.14rem 0.32rem;
+  border-radius: 4px;
+  background: rgba(7, 9, 15, 0.78);
+  color: var(--color-gold);
+  border: 1px solid rgba(245, 200, 66, 0.45);
+}
+
+body.hide-key-hints .uno-card__hotkey {
+  display: none;
 }
 
 .uno-card[data-color='red'] {

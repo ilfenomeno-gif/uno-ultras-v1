@@ -1,5 +1,5 @@
 // ============================================================
-// UNO ULTRA Client — Playable UNO Table View
+// UNO ULTRA Client — Playable UNO Table View (ASTRALIS v3 A11y)
 // ============================================================
 
 import type { Room } from 'colyseus.js';
@@ -12,9 +12,21 @@ import {
   type UnoNumericValue,
   type UnoRoomState,
 } from '@uno/shared';
+import { announce, purgeOnClose } from '../core/aria-live.js';
+import { playEarcon } from '../core/audio-earcons.js';
+import {
+  computeSafeLoopIndex,
+  hasBlockedModifier,
+  resolveCardShortcutIndex,
+} from '../core/keyboard-nav.js';
 import { colyseus } from '../net/connection-manager.js';
 import { getProfile } from '../state/profile-store.js';
-import { formatColorLabel } from './card-format.js';
+import {
+  loadSettings,
+  subscribeSettings,
+  type ClientSettings,
+} from '../ui/shell/settings-modal.js';
+import { formatCardSpeechLabel, formatColorLabel } from './card-format.js';
 import { renderHand } from './hand.js';
 import { renderDiscardPile } from './discard-pile.js';
 import { renderOpponents, type OpponentSummary } from './opponent-panel.js';
@@ -54,12 +66,19 @@ function parseActiveColor(value: string): UnoColor | null {
   return null;
 }
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+}
+
 export function mountGameView(container: HTMLElement, opts: GameViewOptions): () => void {
   const { room } = opts;
   const myId = getProfile()?.id ?? room.sessionId;
 
   const root = document.createElement('section');
   root.className = 'game-view';
+  root.setAttribute('aria-label', 'Tavolo UNO ULTRA');
   root.innerHTML = `
     <div class="game-view__header">
       <button class="game-view__exit" type="button">ESCI</button>
@@ -71,10 +90,10 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
       <div class="game-view__discard" data-role="discard"></div>
     </div>
     <div class="game-view__hints" data-role="hints"></div>
-    <div class="game-view__hand" data-role="hand"></div>
+    <div class="game-view__hand" data-role="hand" role="region" aria-label="La tua mano di carte"></div>
 
     <div class="game-overlay" data-role="lobby-overlay" hidden>
-      <div class="game-modal glass-panel">
+      <div class="game-modal glass-panel" role="dialog" aria-modal="true" aria-label="Sala d'Attesa UNO">
         <h2>Sala d'Attesa UNO</h2>
         <p data-role="lobby-count">Giocatori connessi: 1</p>
         <button type="button" class="launcher-play-btn" data-action="start-bots" hidden>
@@ -84,7 +103,7 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
     </div>
 
     <div class="game-overlay" data-role="wild-overlay" hidden>
-      <div class="game-modal glass-panel">
+      <div class="game-modal glass-panel" role="dialog" aria-modal="true" aria-label="Scegli il Colore">
         <h2>Scegli il Colore</h2>
         <div class="wild-color-grid" data-role="wild-grid"></div>
         <button type="button" class="hint-btn" data-action="cancel-wild">ANNULLA</button>
@@ -92,7 +111,7 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
     </div>
 
     <div class="game-overlay" data-role="ended-overlay" hidden>
-      <div class="game-modal glass-panel">
+      <div class="game-modal glass-panel" role="dialog" aria-modal="true" aria-label="Partita Terminata">
         <h2 data-role="ended-title">Partita Terminata</h2>
         <p data-role="ended-winner"></p>
         <div class="scores-list" data-role="scores-list"></div>
@@ -133,46 +152,75 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
 
   roomIdEl.textContent = `Room ${room.roomId}`;
 
+  let settings: ClientSettings = loadSettings();
   let currentHand: UnoCard[] = [];
+  let displayedHand: UnoCard[] = [];
   let currentState: UnoRoomState | null = room.state ?? null;
   let errorBanner: string | null = null;
   let unoBanner: string | null = null;
   let pendingWildCard: UnoCard | null = null;
   let endedMessage: MatchEndedMessage | null = null;
+  let prevMyTurn = false;
+  let prevPhase = '';
 
-  for (const color of UNO_COLORS) {
+  const focusFirstHandOrDraw = (): void => {
+    const firstCard = handEl.querySelector<HTMLButtonElement>('.uno-card');
+    if (firstCard) {
+      firstCard.focus();
+      return;
+    }
+    hintsEl.querySelector<HTMLButtonElement>('[data-action="draw"]')?.focus();
+  };
+
+  const chooseWildColor = (color: UnoColor): void => {
+    if (!pendingWildCard) return;
+    const cardId = pendingWildCard.id;
+    pendingWildCard = null;
+    wildOverlay.hidden = true;
+    purgeOnClose();
+    playEarcon('play_card');
+    colyseus.sendAction({
+      type: 'play_card',
+      cardId,
+      chosenColor: color,
+    });
+    focusFirstHandOrDraw();
+  };
+
+  const cancelWildSelection = (): void => {
+    if (wildOverlay.hidden) return;
+    pendingWildCard = null;
+    wildOverlay.hidden = true;
+    purgeOnClose();
+    playEarcon('modal_close');
+    focusFirstHandOrDraw();
+  };
+
+  UNO_COLORS.forEach((color, idx) => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'wild-color-btn';
     btn.dataset['color'] = color;
-    btn.textContent = formatColorLabel(color);
-    btn.addEventListener('click', () => {
-      if (!pendingWildCard) return;
-      const cardId = pendingWildCard.id;
-      pendingWildCard = null;
-      wildOverlay.hidden = true;
-      colyseus.sendAction({
-        type: 'play_card',
-        cardId,
-        chosenColor: color,
-      });
-    });
+    const label = formatColorLabel(color);
+    btn.textContent = `${idx + 1}. ${label}`;
+    btn.setAttribute('aria-label', `${label}, tasto ${idx + 1}`);
+    btn.addEventListener('click', () => chooseWildColor(color));
     wildGrid.appendChild(btn);
-  }
-
-  cancelWildBtn.addEventListener('click', () => {
-    pendingWildCard = null;
-    wildOverlay.hidden = true;
   });
+
+  cancelWildBtn.addEventListener('click', cancelWildSelection);
 
   startBotsBtn.addEventListener('click', () => {
     startBotsBtn.disabled = true;
+    playEarcon('confirm');
     colyseus.startMatch();
   });
 
   const handleExit = async (): Promise<void> => {
     exitBtn.disabled = true;
     backLobbyBtn.disabled = true;
+    purgeOnClose();
+    playEarcon('modal_close');
     await colyseus.leaveRoom();
     await opts.onExit();
   };
@@ -181,6 +229,7 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
   backLobbyBtn.addEventListener('click', () => void handleExit());
   rematchBtn.addEventListener('click', () => {
     rematchBtn.disabled = true;
+    playEarcon('confirm');
     room.send('rematch_vote');
   });
 
@@ -189,17 +238,54 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
     if (card.color === 'wild') {
       pendingWildCard = card;
       wildOverlay.hidden = false;
+      playEarcon('modal_open');
+      announce(
+        'Scegli il colore del Jolly: 1 Rosso, 2 Giallo, 3 Verde, 4 Blu',
+        'assertive'
+      );
+      wildGrid.querySelector<HTMLButtonElement>('.wild-color-btn')?.focus();
       return;
     }
+    playEarcon('play_card');
     colyseus.sendAction({
       type: 'play_card',
       cardId: card.id,
     });
   };
 
+  const triggerDraw = (): void => {
+    errorBanner = null;
+    playEarcon('draw');
+    colyseus.sendAction({ type: 'draw_card' });
+  };
+
+  const triggerCallUno = (): void => {
+    errorBanner = null;
+    playEarcon('uno');
+    colyseus.callUno();
+  };
+
+  const triggerChallengeWild4 = (): void => {
+    errorBanner = null;
+    playEarcon('confirm');
+    colyseus.challengeWild4();
+  };
+
   const render = (): void => {
     const state = currentState;
     if (!state) return;
+
+    const activeEl = document.activeElement;
+    const prevHandButtons = Array.from(handEl.querySelectorAll<HTMLButtonElement>('.uno-card'));
+    const hadHandFocus = activeEl instanceof HTMLElement && handEl.contains(activeEl);
+    const activeCardId =
+      hadHandFocus && activeEl instanceof HTMLElement
+        ? (activeEl.dataset['cardId'] ?? null)
+        : null;
+    const prevFocusIdx =
+      hadHandFocus && activeEl instanceof HTMLButtonElement
+        ? prevHandButtons.indexOf(activeEl)
+        : -1;
 
     const currentPlayerId = state.turnOrder[state.currentTurnIndex] ?? '';
     const players: OpponentSummary[] = [];
@@ -290,7 +376,7 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
     renderOpponents(opponentsEl, players, myId);
     renderDiscardPile(discardEl, topCard, state.activeColor, state.direction);
 
-    renderHand(
+    displayedHand = renderHand(
       handEl,
       currentHand,
       {
@@ -298,6 +384,8 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
         discardTop: topCard,
         pendingDraw: state.pendingDrawCount,
         enabled: isMyTurn,
+        autoSort: settings.autoSortHand,
+        showKeyHints: settings.showKeyHints,
       },
       handlePlayCard
     );
@@ -315,23 +403,158 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
           state.pendingDrawCount > 0 &&
           topCard?.kind === 'wild_draw4',
         pendingDraw: state.pendingDrawCount,
+        showKeyHints: settings.showKeyHints,
       },
       {
-        onDraw: () => {
-          errorBanner = null;
-          colyseus.sendAction({ type: 'draw_card' });
-        },
-        onCallUno: () => {
-          errorBanner = null;
-          colyseus.callUno();
-        },
-        onChallengeWild4: () => {
-          errorBanner = null;
-          colyseus.challengeWild4();
-        },
+        onDraw: triggerDraw,
+        onCallUno: triggerCallUno,
+        onChallengeWild4: triggerChallengeWild4,
       }
     );
+
+    // Smart Focus Relocation: preserve card focus across hand re-renders
+    if (hadHandFocus) {
+      const nextButtons = Array.from(handEl.querySelectorAll<HTMLButtonElement>('.uno-card'));
+      if (nextButtons.length > 0) {
+        const byId = activeCardId
+          ? nextButtons.find((btn) => btn.dataset['cardId'] === activeCardId)
+          : undefined;
+        const fallbackIdx = prevFocusIdx >= 0
+          ? Math.min(prevFocusIdx, nextButtons.length - 1)
+          : 0;
+        (byId ?? nextButtons[fallbackIdx])?.focus();
+      } else {
+        hintsEl.querySelector<HTMLButtonElement>('[data-action="draw"]')?.focus();
+      }
+    }
+
+    // Coordinated Turn-Start Feedback (earcon + atomic narration on transition)
+    if (state.phase === 'playing' && isMyTurn && (!prevMyTurn || prevPhase !== 'playing')) {
+      playEarcon('turn_start');
+      const topLabel = topCard ? formatCardSpeechLabel(topCard) : 'nessuna';
+      announce(
+        `Tocca a te. Carta in cima: ${topLabel}. Colore attivo: ${formatColorLabel(state.activeColor)}. Hai ${displayedHand.length} carte.`,
+        'polite'
+      );
+    }
+
+    prevMyTurn = isMyTurn;
+    prevPhase = state.phase;
   };
+
+  const announceTableSummary = (): void => {
+    const state = currentState;
+    if (!state) return;
+    const topCard = extractTopCard(state);
+    const currentPlayerId = state.turnOrder[state.currentTurnIndex] ?? '';
+    const turnName =
+      currentPlayerId === myId
+        ? 'il tuo turno'
+        : (state.players.get(currentPlayerId)?.username ?? 'un avversario');
+    const topLabel = topCard ? formatCardSpeechLabel(topCard) : 'nessuna';
+    const pendingText =
+      state.pendingDrawCount > 0 ? ` Penalità accumulata: +${state.pendingDrawCount}.` : '';
+    announce(
+      `Tavolo: è ${turnName}. Carta in cima: ${topLabel}. Colore attivo: ${formatColorLabel(state.activeColor)}.${pendingText} Hai ${displayedHand.length} carte in mano.`,
+      'polite'
+    );
+  };
+
+  const onTableKeyDown = (ev: KeyboardEvent): void => {
+    if (hasBlockedModifier(ev)) return;
+    if (document.querySelector('.ultra-modal-backdrop')) return;
+    if (isEditableTarget(ev.target)) return;
+
+    if (!wildOverlay.hidden) {
+      if (ev.key === 'Escape') {
+        ev.preventDefault();
+        cancelWildSelection();
+        return;
+      }
+      const colorIdx = ['1', '2', '3', '4'].indexOf(ev.key);
+      const chosen = colorIdx >= 0 ? UNO_COLORS[colorIdx] : undefined;
+      if (chosen) {
+        ev.preventDefault();
+        chooseWildColor(chosen);
+      }
+      return;
+    }
+
+    if (currentState?.phase !== 'playing') return;
+
+    const cardButtons = Array.from(handEl.querySelectorAll<HTMLButtonElement>('.uno-card'));
+
+    if (
+      ev.key === 'ArrowRight' ||
+      ev.key === 'ArrowLeft' ||
+      ev.code === 'Numpad6' ||
+      ev.code === 'Numpad4'
+    ) {
+      if (cardButtons.length === 0) return;
+      ev.preventDefault();
+      const delta = ev.key === 'ArrowRight' || ev.code === 'Numpad6' ? 1 : -1;
+      const curIdx =
+        document.activeElement instanceof HTMLButtonElement
+          ? cardButtons.indexOf(document.activeElement)
+          : -1;
+      const { index, wrapped } = computeSafeLoopIndex(curIdx, delta, cardButtons.length);
+      const target = cardButtons[index];
+      if (target) {
+        target.focus();
+        playEarcon(wrapped ? 'boundary' : 'nav');
+      }
+      return;
+    }
+
+    if (ev.key === 'Home' || ev.key === 'End') {
+      if (cardButtons.length === 0) return;
+      ev.preventDefault();
+      const target =
+        ev.key === 'Home' ? cardButtons[0] : cardButtons[cardButtons.length - 1];
+      target?.focus();
+      playEarcon('nav');
+      return;
+    }
+
+    const shortcutIdx = resolveCardShortcutIndex(ev.key);
+    if (shortcutIdx >= 0) {
+      ev.preventDefault();
+      const btn = cardButtons[shortcutIdx];
+      if (!btn) {
+        playEarcon('boundary');
+        announce(`Nessuna carta allo slot ${ev.key}`, 'polite');
+        return;
+      }
+      btn.focus();
+      btn.click();
+      return;
+    }
+
+    const lower = ev.key.toLowerCase();
+    if (lower === 'p') {
+      ev.preventDefault();
+      hintsEl.querySelector<HTMLButtonElement>('[data-action="draw"]')?.click();
+    } else if (lower === 'u') {
+      ev.preventDefault();
+      hintsEl.querySelector<HTMLButtonElement>('[data-action="call-uno"]')?.click();
+    } else if (lower === 'c') {
+      const chBtn = hintsEl.querySelector<HTMLButtonElement>('[data-action="challenge-wild4"]');
+      if (chBtn) {
+        ev.preventDefault();
+        chBtn.click();
+      }
+    } else if (lower === 's') {
+      ev.preventDefault();
+      announceTableSummary();
+    }
+  };
+
+  window.addEventListener('keydown', onTableKeyDown);
+
+  const unsubSettings = subscribeSettings((next) => {
+    settings = next;
+    render();
+  });
 
   const stateListener = (state: UnoRoomState): void => {
     currentState = state;
@@ -347,6 +570,8 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
   const offAction = colyseus.onActionResult((res) => {
     if (!res.ok && res.reason) {
       errorBanner = res.reason;
+      playEarcon('error');
+      announce(res.reason, 'assertive');
       render();
     }
   });
@@ -354,6 +579,8 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
   const offUno = colyseus.onUnoCalled((msg) => {
     const callerName = currentState?.players.get(msg.playerId)?.username ?? msg.playerId;
     unoBanner = `${callerName} ha gridato UNO!`;
+    playEarcon('uno');
+    announce(unoBanner, 'assertive');
     render();
     window.setTimeout(() => {
       unoBanner = null;
@@ -365,6 +592,14 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
     endedMessage = msg;
     rematchBtn.disabled = false;
     rematchStatusEl.textContent = '';
+    const winnerName = currentState?.players.get(msg.winnerId)?.username ?? msg.winnerId;
+    playEarcon(msg.winnerId === myId ? 'win' : 'confirm');
+    announce(
+      msg.winnerId === myId
+        ? 'Hai vinto la partita!'
+        : `Partita terminata. Vincitore: ${winnerName}`,
+      'assertive'
+    );
     render();
   });
 
@@ -374,6 +609,8 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
 
   room.onMessage('chaos_flip', () => {
     unoBanner = 'CHAOS FLIP! Direzione invertita!';
+    playEarcon('confirm');
+    announce(unoBanner, 'assertive');
     render();
     window.setTimeout(() => {
       unoBanner = null;
@@ -384,6 +621,9 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
   render();
 
   return () => {
+    window.removeEventListener('keydown', onTableKeyDown);
+    unsubSettings();
+    purgeOnClose();
     room.onStateChange.remove(stateListener);
     offHand();
     offAction();

@@ -32,3 +32,21 @@ export function formatCardSymbol(card: UnoCard): string {
 export function formatColorLabel(color: string): string {
   return COLOR_LABELS[color] ?? '—';
 }
+
+export function formatCardSpeechLabel(card: UnoCard): string {
+  const colorName = formatColorLabel(card.color);
+  switch (card.kind) {
+    case 'number':
+      return `${colorName} ${card.value ?? 0}`;
+    case 'skip':
+      return `${colorName} Salta`;
+    case 'reverse':
+      return `${colorName} Inverti`;
+    case 'draw2':
+      return `${colorName} Pesca 2`;
+    case 'wild':
+      return 'Jolly Cambia Colore';
+    case 'wild_draw4':
+      return 'Jolly Pesca 4';
+  }
+}

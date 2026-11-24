@@ -13,6 +13,9 @@ import './styles/shop.css';
 import './styles/tournaments.css';
 
 import { Router, type AppRoute } from './core/router.js';
+import { announce, purgeOnClose } from './core/aria-live.js';
+import { playEarcon } from './core/audio-earcons.js';
+import { hasBlockedModifier } from './core/keyboard-nav.js';
 import { ParticlesCanvas } from './fx/particles-canvas.js';
 import { renderSplashScreen } from './ui/shell/splash-screen.js';
 import { mountAuthScreen } from './ui/shell/auth-screen.js';
@@ -47,6 +50,7 @@ function bootstrap(): void {
   document.body.append(socialDrawer.backdrop, socialDrawer.drawer);
 
   let unmountActiveView: (() => void) | null = null;
+  let previousRoute: AppRoute | null = null;
 
   const enterPostSplash = (): void => {
     router.navigate(isAuthenticated() ? 'gioca' : 'auth');
@@ -73,6 +77,13 @@ function bootstrap(): void {
   };
 
   const render = (route: AppRoute): void => {
+    if (previousRoute !== null && previousRoute !== route) {
+      purgeOnClose();
+      playEarcon('nav');
+      announce(`Sezione ${route}`, 'polite');
+    }
+    previousRoute = route;
+
     if (unmountActiveView) {
       unmountActiveView();
       unmountActiveView = null;
@@ -132,6 +143,7 @@ function bootstrap(): void {
 
     const main = document.createElement('main');
     main.className = 'shell-main';
+    main.tabIndex = -1;
     main.appendChild(
       route === 'gioca'
         ? createPlayView(socialDrawer, handleLaunch)
@@ -147,6 +159,7 @@ function bootstrap(): void {
 
   // Navigazione da tastiera: INVIO su splash, ESC globale ovunque (tranne in partita attiva)
   window.addEventListener('keydown', (ev) => {
+    if (hasBlockedModifier(ev)) return;
     const current = router.getRoute();
     if (ev.key === 'Enter' && current === 'splash') {
       enterPostSplash();
