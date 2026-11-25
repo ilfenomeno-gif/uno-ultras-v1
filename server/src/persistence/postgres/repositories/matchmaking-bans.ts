@@ -9,6 +9,7 @@ import {
   type GameMode,
   type RankTier,
 } from '@uno/shared';
+import { env } from '../../../config/env.js';
 import { query } from '../client.js';
 import { canUseDevFallback, readDevState, updateDevState } from '../dev-store.js';
 import { updateLeaderboardScore } from '../../redis/leaderboard.js';
@@ -51,7 +52,13 @@ export async function getActiveMatchmakingBan(
       [playerId],
     );
     const row = res.rows[0];
-    if (!row) return null;
+    if (!row) {
+      if (env.NODE_ENV !== 'production') {
+        const rec = readDevState().matchmakingBans[playerId];
+        return rec ? toActiveBan(rec) : null;
+      }
+      return null;
+    }
     return toActiveBan({
       banExpiresAt: row.ban_expires_at,
       offenseCount: Number(row.offense_count),

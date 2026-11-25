@@ -14,6 +14,7 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:5174',
     headless: true,
+    trace: 'retain-on-failure',
   },
   webServer: [
     {

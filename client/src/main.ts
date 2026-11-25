@@ -127,7 +127,8 @@ function bootstrap(): void {
       }
 
       let matchedRoomId: string | undefined;
-      const deadline = Date.now() + 3500;
+      let cancelled = false;
+      const deadline = Date.now() + 12_000;
       while (Date.now() < deadline) {
         await new Promise<void>((resolve) => {
           window.setTimeout(resolve, 250);
@@ -138,11 +139,18 @@ function bootstrap(): void {
             matchedRoomId = statusRes.roomId;
             break;
           }
+          if (statusRes.status === 'cancelled') {
+            cancelled = true;
+            break;
+          }
         } catch {
-          // Ignore transient poll errors while waiting for opponents
+          // Ignore transient poll errors while waiting for server match or bot fallback
         }
       }
 
+      if (cancelled) {
+        throw new Error('Coda matchmaking annullata');
+      }
       if (matchedRoomId) {
         await joinMatchById(matchedRoomId);
         router.navigate('game');
@@ -150,6 +158,7 @@ function bootstrap(): void {
       }
 
       await cancelMatchmaking('uno', cfg.ranked).catch(() => undefined);
+      throw new Error('Timeout matchmaking: nessun server di gioco disponibile. Riprova.');
     }
 
     const room = await enterMatch({

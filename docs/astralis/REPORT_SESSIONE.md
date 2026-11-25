@@ -4,6 +4,17 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
+## Sessione 2026-11-25 (Parte 13) — Hardening Matchmaking Server-Side, Test Negativi & Fix CI GitHub Actions
+
+- **Obiettivo**: chiudere i punti deboli del matchmaking (autorizzazione posti, fallback bot deciso dal server, gestione no-show), aggiungere test di integrazione sui percorsi negativi, riparare il workflow GitHub Actions fallito su `66832da` e documentare ADR/API.
+- **Stato Lavori**:
+  - `[x]` Fix GitHub Actions CI: rimossi i workflow vuoti `cd-production.yml` / `cd-staging.yml`, aggiunto build di `@uno/shared` dentro `npm run typecheck` (`package.json`), attivato `trace: 'retain-on-failure'` in `playwright.config.ts` e upload artifact su fallimento in `.github/workflows/ci.yml`.
+  - `[x]` Matchmaking autoritativo lato server: `UnoRoom.onAuth` ora blocca con errore chi non appartiene a `allowedPlayerIds`; aggiunto `noShowTimer` con `handleNoShowTimeout()` (`disconnect()` con 0 ingressi, `fillWithBots` + `no_show_fallback` con ingressi parziali); `MatchmakingQueue.claimForBotFallback()` + `GET /api/matchmaking/status/:ticketId` decidono lato server il passaggio atomico a `bot_fallback` eliminando race condition e stanze fantasma.
+  - `[x]` Nuovi test di integrazione in `server/tests/integration/matchmaking-hardening.test.ts` su `onAuth`, race annullamento, `claimForBotFallback`, no-show (`0` e `1` giocatore), ticket `404`/`403` e blocco utenti bannati `403`.
+  - `[x]` Popolati `docs/adr/0006-authoritative-matchmaking-flow.md`, `docs/api/rest.md` e `docs/api/websocket.md`.
+
+---
+
 ## Sessione 2026-11-25 (Parte 12) — Ripristino Node 24 LTS, Matchmaking Online Reale & Test Playwright E2E a 2 Browser
 
 - **Obiettivo**: ripristinare il runtime LTS supportato (**Node 24**), collegare end-to-end la coda REST di matchmaking (`POST /api/matchmaking/enqueue`) alla creazione e ingresso nella stessa stanza Colyseus tra giocatori reali, e aggiungere un test **Playwright E2E a 2 contesti browser** integrato in `.github/workflows/ci.yml`.

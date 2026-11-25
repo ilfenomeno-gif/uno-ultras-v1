@@ -15,6 +15,8 @@ export interface QueueTicket {
   readonly mmr: number;
   readonly targetPlayers: number;
   readonly joinedAtMs: number;
+  readonly variant?: string;
+  readonly fallbackAtMs?: number;
 }
 
 export interface FormedMatch {
@@ -40,6 +42,31 @@ export class MatchmakingQueue {
 
   cancel(playerId: string): boolean {
     return this.entries.delete(playerId);
+  }
+
+  cancelAndGetTicket(playerId: string): QueueTicket | null {
+    const existing = this.entries.get(playerId) ?? null;
+    if (!existing) return null;
+    this.entries.delete(playerId);
+    return existing;
+  }
+
+  claimForBotFallback(
+    playerId: string,
+    ticketId: string,
+    nowMs = Date.now(),
+  ): QueueTicket | null {
+    const entry = this.entries.get(playerId);
+    if (
+      !entry ||
+      entry.ticketId !== ticketId ||
+      !entry.fallbackAtMs ||
+      nowMs < entry.fallbackAtMs
+    ) {
+      return null;
+    }
+    this.entries.delete(playerId);
+    return entry;
   }
 
   size(): number {

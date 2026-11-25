@@ -2,6 +2,7 @@
 // UNO ULTRA Server — Matchmaking Queue REST Router
 // ============================================================
 
+import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { matchMaker } from 'colyseus';
 import { z } from 'zod';
@@ -105,6 +106,9 @@ matchmakingRouter.post('/enqueue', authRequired, mmLimiter, async (req, res) => 
   }
 
   const effectiveMmr = computeWeightedPartyMMR(partyMmrs, { ranked: parsed.data.ranked });
+  const fallbackDelayMs = Math.max(20, Number(process.env['MATCHMAKING_BOT_FALLBACK_MS'] ?? 3500));
+  const fallbackAtMs = Date.now() + fallbackDelayMs;
+  const selectedVariant = parsed.data.variant ?? 'standard';
 
   const ticket = matchmakingQueue.enqueue({
     playerId,
@@ -113,6 +117,8 @@ matchmakingRouter.post('/enqueue', authRequired, mmLimiter, async (req, res) => 
     ranked: parsed.data.ranked,
     mmr: effectiveMmr,
     targetPlayers: parsed.data.targetPlayers,
+    variant: selectedVariant,
+    fallbackAtMs,
   });
 
   await pushRedisQueueMember(parsed.data.mode, parsed.data.ranked, playerId, effectiveMmr);
@@ -123,12 +129,17 @@ matchmakingRouter.post('/enqueue', authRequired, mmLimiter, async (req, res) => 
     mode: parsed.data.mode,
     ranked: parsed.data.ranked,
     mmr: effectiveMmr,
+    targetPlayers: parsed.data.targetPlayers,
+    variant: selectedVariant,
+    fallbackAtMs,
   });
 
   const formed = matchmakingQueue.popMatches();
   let matchedResponse: Record<string, unknown> | null = null;
 
   for (const match of formed) {
+    const allowedPlayerIds = match.players.map((p) => p.playerId);
+    const matchVariant = match.players[0]?.variant ?? selectedVariant;
     let roomId: string | undefined;
     if (match.mode === 'uno') {
       try {
@@ -136,8 +147,9 @@ matchmakingRouter.post('/enqueue', authRequired, mmLimiter, async (req, res) => 
           maxPlayers: match.players.length,
           ranked: match.ranked,
           fillWithBots: false,
-          variant: parsed.data.variant ?? 'standard',
+          variant: matchVariant,
           matchmade: true,
+          allowedPlayerIds,
         });
         roomId = created.roomId;
       } catch {
@@ -149,8 +161,10 @@ matchmakingRouter.post('/enqueue', authRequired, mmLimiter, async (req, res) => 
       await removeRedisQueueMembers(match.mode, match.ranked, [member.playerId]);
       await cacheMatchmakingTicket(member.ticketId, {
         status: 'matched',
+        matchType: 'human',
         matchId: match.matchId,
         ...(roomId ? { roomId } : {}),
+        allowedPlayerIds,
         mode: match.mode,
         ranked: match.ranked,
         averageMMR: match.averageMMR,
@@ -161,6 +175,8 @@ matchmakingRouter.post('/enqueue', authRequired, mmLimiter, async (req, res) => 
     if (match.players.some((p) => p.playerId === playerId)) {
       matchedResponse = {
         ...match,
+        matchType: 'human',
+        allowedPlayerIds,
         ...(roomId ? { roomId } : {}),
       };
     }
@@ -186,15 +202,71 @@ matchmakingRouter.get('/status/:ticketId', authRequired, async (req, res) => {
     res.status(404).json({ error: 'Ticket matchmaking scaduto o non trovato' });
     return;
   }
+  if (typeof ticket['playerId'] === 'string' && ticket['playerId'] !== req.user!.sub) {
+    res.status(403).json({ error: 'Ticket non appartenente a questo giocatore' });
+    return;
+  }
+
+  if (ticket['status'] === 'searching') {
+    const claimed = matchmakingQueue.claimForBotFallback(req.user!.sub, ticketId);
+    if (claimed) {
+      await removeRedisQueueMembers(claimed.mode, claimed.ranked, [claimed.playerId]);
+      let roomId: string | undefined;
+      if (claimed.mode === 'uno') {
+        try {
+          const created = await matchMaker.createRoom('uno', {
+            maxPlayers: claimed.targetPlayers,
+            ranked: claimed.ranked,
+            fillWithBots: true,
+            variant: claimed.variant ?? 'standard',
+            matchmade: true,
+            allowedPlayerIds: [claimed.playerId],
+          });
+          roomId = created.roomId;
+        } catch {
+          // Fallback when running HTTP-only unit tests without Colyseus server booted
+        }
+      }
+
+      const updated: Record<string, unknown> = {
+        ...ticket,
+        status: 'matched',
+        matchType: 'bot_fallback',
+        matchId: randomUUID(),
+        allowedPlayerIds: [claimed.playerId],
+        ...(roomId ? { roomId } : {}),
+      };
+      await cacheMatchmakingTicket(ticketId, updated);
+      res.status(200).json(updated);
+      return;
+    }
+  }
+
   res.status(200).json(ticket);
 });
 
 matchmakingRouter.delete('/cancel', authRequired, async (req, res) => {
   const playerId = req.user!.sub;
-  const cancelled = matchmakingQueue.cancel(playerId);
-  const mode = (GAME_MODES as readonly string[]).includes(String(req.query['mode']))
+  const removed = matchmakingQueue.cancelAndGetTicket(playerId);
+  const queryMode = (GAME_MODES as readonly string[]).includes(String(req.query['mode']))
     ? (req.query['mode'] as GameMode)
     : 'uno';
-  await removeRedisQueueMembers(mode, req.query['ranked'] === 'true', [playerId]);
-  res.status(200).json({ cancelled });
+  if (removed) {
+    await cacheMatchmakingTicket(removed.ticketId, {
+      status: 'cancelled',
+      ticketId: removed.ticketId,
+      playerId,
+      mode: removed.mode,
+      ranked: removed.ranked,
+    });
+  }
+  await removeRedisQueueMembers(
+    removed?.mode ?? queryMode,
+    removed?.ranked ?? req.query['ranked'] === 'true',
+    [playerId],
+  );
+  res.status(200).json({
+    cancelled: Boolean(removed),
+    ...(removed ? { ticketId: removed.ticketId } : {}),
+  });
 });

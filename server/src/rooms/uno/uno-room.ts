@@ -53,6 +53,8 @@ export interface UnoRoomCreateOptions {
   variant?: MatchVariant;
   customConfig?: CustomMatchConfig;
   matchmade?: boolean;
+  allowedPlayerIds?: readonly string[];
+  noShowTimeoutMs?: number;
 }
 
 export interface UnoRoomJoinOptions {
@@ -117,6 +119,8 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
   private fillWithBots = true;
   private botDifficulty: AIDifficulty = 'normal';
   private isRanked = false;
+  private isMatchmade = false;
+  private allowedPlayerIds: Set<string> | null = null;
   private matchConfig: CustomMatchConfig = VARIANT_PRESETS.standard;
   private startedAtMs = 0;
   private initialSeed = 0;
@@ -130,6 +134,7 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
 
   private botTimer: Delayed | null = null;
   private turnTimer: Delayed | null = null;
+  private noShowTimer: Delayed | null = null;
 
   override onCreate(options: UnoRoomCreateOptions): void {
     this.setState(new UnoRoomState());
@@ -142,7 +147,12 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
     this.fillWithBots = options.fillWithBots ?? true;
     this.botDifficulty = options.botDifficulty ?? 'normal';
     this.isRanked = options.ranked ?? false;
-    if (options.matchmade) {
+    this.isMatchmade = Boolean(options.matchmade);
+    this.allowedPlayerIds =
+      options.allowedPlayerIds && options.allowedPlayerIds.length > 0
+        ? new Set(options.allowedPlayerIds)
+        : null;
+    if (this.isMatchmade) {
       void this.setPrivate(true);
     }
 
@@ -152,12 +162,38 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
     this.matchConfig = validated.ok && validated.config ? validated.config : basePreset;
 
     this.registerMessageHandlers();
+    if (this.isMatchmade && !this.fillWithBots) {
+      const noShowDelayMs = Math.max(
+        30,
+        options.noShowTimeoutMs ?? Number(process.env['MATCHMAKING_NOSHOW_TIMEOUT_MS'] ?? 15_000),
+      );
+      this.noShowTimer = this.clock.setTimeout(() => this.handleNoShowTimeout(), noShowDelayMs);
+    }
     this.logInfo('UnoRoom created', {
       targetPlayers: this.targetPlayers,
       fillWithBots: this.fillWithBots,
       botDifficulty: this.botDifficulty,
       variant: this.matchConfig.variant,
+      matchmade: this.isMatchmade,
     });
+  }
+
+  override async onAuth(_client: Client, options: UnoRoomJoinOptions): Promise<boolean> {
+    if (this.allowedPlayerIds === null || options.spectator) {
+      return true;
+    }
+    let playerId = options.playerId;
+    if (options.token) {
+      try {
+        playerId = verifyAccessToken(options.token).sub;
+      } catch {
+        throw new Error('Token di autenticazione non valido');
+      }
+    }
+    if (!playerId || !this.allowedPlayerIds.has(playerId)) {
+      throw new Error('Accesso negato: non sei tra i giocatori abbinati a questa stanza');
+    }
+    return true;
   }
 
   override async onJoin(client: Client, options: UnoRoomJoinOptions): Promise<void> {
@@ -260,8 +296,13 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
 
     this.logInfo('Player joined UnoRoom', { playerId, username });
 
-    // Avvio automatico quando la stanza raggiunge il numero target di umani
-    if (this.lobbyParticipants.size >= this.targetPlayers) {
+    // Avvio automatico quando la stanza raggiunge i partecipanti attesi
+    const botFallbackReady =
+      this.isMatchmade &&
+      this.fillWithBots &&
+      this.allowedPlayerIds !== null &&
+      this.lobbyParticipants.size >= this.allowedPlayerIds.size;
+    if (this.lobbyParticipants.size >= this.targetPlayers || botFallbackReady) {
       this.startUnoMatch();
     }
   }
@@ -559,6 +600,11 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
       return;
     }
 
+    if (this.noShowTimer) {
+      this.noShowTimer.clear();
+      this.noShowTimer = null;
+    }
+
     const seed = randomInt(1, 0x7fffffff);
     this.initialSeed = seed;
     this.startedAtMs = Date.now();
@@ -765,7 +811,27 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
     }
   }
 
+  private handleNoShowTimeout(): void {
+    this.noShowTimer = null;
+    if (this.state.phase !== 'lobby') return;
+    if (this.lobbyParticipants.size === 0) {
+      this.logWarn('Matchmade room no-show: 0 players joined; disposing room');
+      void this.disconnect();
+      return;
+    }
+    this.fillWithBots = true;
+    this.broadcast('no_show_fallback', {
+      joined: this.lobbyParticipants.size,
+      target: this.targetPlayers,
+    });
+    this.startUnoMatch();
+  }
+
   private clearTimers(): void {
+    if (this.noShowTimer) {
+      this.noShowTimer.clear();
+      this.noShowTimer = null;
+    }
     if (this.botTimer) {
       this.botTimer.clear();
       this.botTimer = null;
