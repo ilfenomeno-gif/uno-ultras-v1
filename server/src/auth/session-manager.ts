@@ -7,6 +7,7 @@ import type { Request, Response } from 'express';
 import type { PoolClient } from 'pg';
 import { env } from '../config/env.js';
 import { getPostgresPool, query } from '../persistence/postgres/client.js';
+import { canUseDevFallback } from '../persistence/postgres/dev-store.js';
 
 const REFRESH_COOKIE_NAME = 'uno_refresh';
 const REFRESH_TTL_DAYS = 14;
@@ -18,18 +19,6 @@ const devRefreshStore = new Map<
 
 function hashToken(rawToken: string): string {
   return crypto.createHash('sha256').update(rawToken).digest('hex');
-}
-
-function isDbUnavailable(err: unknown): boolean {
-  if (!err || typeof err !== 'object') return false;
-  const rec = err as { code?: unknown; errors?: unknown[] };
-  if (typeof rec.code === 'string' && /^(ECONNREFUSED|ENOTFOUND|ETIMEDOUT|57P01|0800[1-6])$/.test(rec.code)) {
-    return true;
-  }
-  if (Array.isArray(rec.errors)) {
-    return rec.errors.some((inner) => isDbUnavailable(inner));
-  }
-  return false;
 }
 
 export interface IssuedRefreshToken {
@@ -49,7 +38,7 @@ export async function issueRefreshToken(playerId: string): Promise<IssuedRefresh
       [playerId, tokenHash, expiresAt],
     );
   } catch (err) {
-    if (env.NODE_ENV !== 'production' && isDbUnavailable(err)) {
+    if (canUseDevFallback(err)) {
       devRefreshStore.set(tokenHash, { playerId, expiresAt, revoked: false });
       return { rawToken, expiresAt };
     }
@@ -115,7 +104,7 @@ export async function rotateRefreshToken(
     if (activeClient) {
       await activeClient.query('ROLLBACK').catch(() => undefined);
     }
-    if (env.NODE_ENV !== 'production' && isDbUnavailable(err)) {
+    if (canUseDevFallback(err)) {
       return null;
     }
     throw err;
@@ -137,7 +126,7 @@ export async function revokeRefreshToken(rawToken: string): Promise<void> {
       [tokenHash],
     );
   } catch (err) {
-    if (env.NODE_ENV !== 'production' && isDbUnavailable(err)) {
+    if (canUseDevFallback(err)) {
       return;
     }
     throw err;
