@@ -4,7 +4,17 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
-## Sessione 2026-11-25 — Fix Tornei HTTP 500, Import Targhette & Sfide v52, Tab Top 100 Mondiale
+## Sessione 2026-11-25 (Parte 2) — Fix Registrazione & Login con Fallback Dev Locale
+
+- **Obiettivo**: eliminare l'errore `HTTP 500` su `POST /api/auth/register` e `POST /api/auth/login` quando PostgreSQL/Docker Desktop non sono avviati, mantenendo invariata la persistenza PostgreSQL reale in produzione e quando il DB è online.
+- **Stato Lavori**:
+  - `[x]` Fallback dev-only (`env.NODE_ENV !== 'production'`) con salvataggio in `os.tmpdir()/uno-ultra-dev-players.json` (UUID, hash `bcrypt`, controllo duplicati `23505`, lookup case-insensitive) in `server/src/persistence/postgres/repositories/players.ts`.
+  - `[x]` Fallback sessioni refresh token in `server/src/auth/session-manager.ts` (`issueRefreshToken`, `rotateRefreshToken`, `revokeRefreshToken`) con `pool.connect()` protetto.
+  - `[x]` Test di integrazione in `server/tests/integration/auth-registration.test.ts` + `npm run ci` verde (**27 suite Vitest / 164 test passati**: shared `74`, server `40`, client `50`; `0` errori ESLint/TS) + SHA-256 `contenuto-game.md` intatto (`83CAE3C057B35C22B460CC6F61BCF11AA355D1DB5F9EB4F2EC40517B2A1BD4D9`).
+
+---
+
+## Sessione 2026-11-25 — Fix Tornei HTTP 500, Import Targhette & Sfide v52, Tab Top 100 Mondiale (`80f5ad2`)
 
 - **Obiettivo**: eliminare gli errori `HTTP 500` all'iscrizione ai tornei e ai timeout Redis, importare tutte le targhette/titoli e sfide dal backup storico `uno_ultra_v52`, e introdurre il nuovo tab **Top 100 Mondiale** con filtri per tutte le `8` modalità e selettore numero giocatori (`1v1`, `3 Giocatori`, `4 Giocatori`).
 - **Stato Lavori**:

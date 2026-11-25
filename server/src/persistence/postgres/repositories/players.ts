@@ -1,7 +1,12 @@
 // ============================================================
-// UNO ULTRA Server — Players repository (parameterized SQL)
+// UNO ULTRA Server — Players repository (parameterized SQL + dev fallback)
 // ============================================================
 
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { env } from '../../../config/env.js';
 import { query } from '../client.js';
 
 export interface PlayerRow {
@@ -24,68 +29,196 @@ export interface CreatePlayerInput {
   email?: string;
 }
 
+interface StoredDevPlayer {
+  id: string;
+  username: string;
+  username_canonical: string;
+  password_hash: string;
+  email: string | null;
+  rank_tier: string;
+  mmr: number;
+  vcard: number;
+  battle_card_level: number;
+  created_at: string;
+  updated_at: string;
+}
+
+const DEV_PLAYERS_FILE = path.join(os.tmpdir(), 'uno-ultra-dev-players.json');
+const RESERVED_USERNAMES = new Set(['admin', 'moderator', 'system', 'support', 'uno_bot', 'uno_ultra']);
+
+function isDbUnavailableError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const rec = err as { code?: unknown; errors?: unknown[] };
+  if (typeof rec.code === 'string' && /^(ECONNREFUSED|ENOTFOUND|ETIMEDOUT|57P01|0800[1-6])$/.test(rec.code)) {
+    return true;
+  }
+  if (Array.isArray(rec.errors)) {
+    return rec.errors.some((inner) => isDbUnavailableError(inner));
+  }
+  return false;
+}
+
+function readDevPlayers(): StoredDevPlayer[] {
+  try {
+    if (!fs.existsSync(DEV_PLAYERS_FILE)) return [];
+    const parsed = JSON.parse(fs.readFileSync(DEV_PLAYERS_FILE, 'utf8'));
+    return Array.isArray(parsed) ? (parsed as StoredDevPlayer[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeDevPlayers(rows: StoredDevPlayer[]): void {
+  fs.writeFileSync(DEV_PLAYERS_FILE, JSON.stringify(rows, null, 2), 'utf8');
+}
+
+function toPlayerRow(stored: StoredDevPlayer): PlayerRow {
+  return {
+    id: stored.id,
+    username: stored.username,
+    username_canonical: stored.username_canonical,
+    password_hash: stored.password_hash,
+    email: stored.email,
+    rank_tier: stored.rank_tier,
+    mmr: stored.mmr,
+    vcard: stored.vcard,
+    battle_card_level: stored.battle_card_level,
+    created_at: new Date(stored.created_at),
+    updated_at: new Date(stored.updated_at),
+  };
+}
+
 export async function isUsernameReserved(username: string): Promise<boolean> {
   const canonical = username.trim().toLowerCase();
-  const res = await query<{ canonical_name: string }>(
-    `SELECT canonical_name
-       FROM reserved_usernames
-      WHERE canonical_name = $1
-      LIMIT 1`,
-    [canonical]
-  );
-  return (res.rowCount ?? 0) > 0;
+  try {
+    const res = await query<{ canonical_name: string }>(
+      `SELECT canonical_name
+         FROM reserved_usernames
+        WHERE canonical_name = $1
+        LIMIT 1`,
+      [canonical],
+    );
+    return (res.rowCount ?? 0) > 0;
+  } catch (err) {
+    if (env.NODE_ENV !== 'production' && isDbUnavailableError(err)) {
+      return RESERVED_USERNAMES.has(canonical);
+    }
+    throw err;
+  }
 }
 
 export async function findPlayerByUsername(username: string): Promise<PlayerRow | null> {
-  const res = await query<PlayerRow>(
-    `SELECT id, username, password_hash, email, rank_tier, mmr, vcard, battle_card_level, created_at, updated_at
-     FROM players
-     WHERE LOWER(username) = LOWER($1)
-       AND deleted_at IS NULL
-     LIMIT 1`,
-    [username.trim()]
-  );
-  return res.rows[0] ?? null;
+  const trimmed = username.trim();
+  const canonical = trimmed.toLowerCase();
+  try {
+    const res = await query<PlayerRow>(
+      `SELECT id, username, password_hash, email, rank_tier, mmr, vcard, battle_card_level, created_at, updated_at
+       FROM players
+       WHERE LOWER(username) = LOWER($1)
+         AND deleted_at IS NULL
+       LIMIT 1`,
+      [trimmed],
+    );
+    return res.rows[0] ?? null;
+  } catch (err) {
+    if (env.NODE_ENV !== 'production' && isDbUnavailableError(err)) {
+      const found = readDevPlayers().find((p) => p.username_canonical === canonical);
+      return found ? toPlayerRow(found) : null;
+    }
+    throw err;
+  }
 }
 
 export async function findPlayerById(id: string): Promise<PlayerRow | null> {
-  const res = await query<PlayerRow>(
-    `SELECT id, username, password_hash, email, rank_tier, mmr, vcard, battle_card_level, created_at, updated_at
-     FROM players
-     WHERE id = $1
-       AND deleted_at IS NULL
-     LIMIT 1`,
-    [id]
-  );
-  return res.rows[0] ?? null;
+  try {
+    const res = await query<PlayerRow>(
+      `SELECT id, username, password_hash, email, rank_tier, mmr, vcard, battle_card_level, created_at, updated_at
+       FROM players
+       WHERE id = $1
+         AND deleted_at IS NULL
+       LIMIT 1`,
+      [id],
+    );
+    return res.rows[0] ?? null;
+  } catch (err) {
+    if (env.NODE_ENV !== 'production' && isDbUnavailableError(err)) {
+      const found = readDevPlayers().find((p) => p.id === id);
+      return found ? toPlayerRow(found) : null;
+    }
+    throw err;
+  }
 }
 
 export async function createPlayer(input: CreatePlayerInput): Promise<PlayerRow> {
   const username = input.username.trim();
   const canonical = username.toLowerCase();
 
-  const res = await query<PlayerRow>(
-    `INSERT INTO players (username, username_canonical, password_hash, email)
-     VALUES ($1, $2, $3, $4)
-     RETURNING id, username, password_hash, email, rank_tier, mmr, vcard, battle_card_level, created_at, updated_at`,
-    [username, canonical, input.passwordHash, input.email ?? null]
-  );
-  const row = res.rows[0];
-  if (!row) {
-    throw new Error('Failed to create player record');
+  try {
+    const res = await query<PlayerRow>(
+      `INSERT INTO players (username, username_canonical, password_hash, email)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, username, password_hash, email, rank_tier, mmr, vcard, battle_card_level, created_at, updated_at`,
+      [username, canonical, input.passwordHash, input.email ?? null],
+    );
+    const row = res.rows[0];
+    if (!row) {
+      throw new Error('Failed to create player record');
+    }
+    return row;
+  } catch (err) {
+    if (env.NODE_ENV !== 'production' && isDbUnavailableError(err)) {
+      const list = readDevPlayers();
+      if (list.some((p) => p.username_canonical === canonical)) {
+        const dup = new Error('Username already exists') as Error & { code: string };
+        dup.code = '23505';
+        throw dup;
+      }
+      const nowIso = new Date().toISOString();
+      const created: StoredDevPlayer = {
+        id: crypto.randomUUID(),
+        username,
+        username_canonical: canonical,
+        password_hash: input.passwordHash,
+        email: input.email ?? null,
+        rank_tier: 'Bronze I',
+        mmr: 400,
+        vcard: 500,
+        battle_card_level: 1,
+        created_at: nowIso,
+        updated_at: nowIso,
+      };
+      list.push(created);
+      writeDevPlayers(list);
+      return toPlayerRow(created);
+    }
+    throw err;
   }
-  return row;
 }
 
 export async function updatePlayerRank(
   playerId: string,
   mmr: number,
-  rankTier: string
+  rankTier: string,
 ): Promise<void> {
-  await query(
-    `UPDATE players
-     SET mmr = $2, rank_tier = $3, updated_at = NOW()
-     WHERE id = $1`,
-    [playerId, mmr, rankTier]
-  );
+  try {
+    await query(
+      `UPDATE players
+       SET mmr = $2, rank_tier = $3, updated_at = NOW()
+       WHERE id = $1`,
+      [playerId, mmr, rankTier],
+    );
+  } catch (err) {
+    if (env.NODE_ENV !== 'production' && isDbUnavailableError(err)) {
+      const list = readDevPlayers();
+      const target = list.find((p) => p.id === playerId);
+      if (target) {
+        target.mmr = mmr;
+        target.rank_tier = rankTier;
+        target.updated_at = new Date().toISOString();
+        writeDevPlayers(list);
+      }
+      return;
+    }
+    throw err;
+  }
 }

@@ -1,17 +1,35 @@
 // ============================================================
-// UNO ULTRA Server — Refresh token session manager (HttpOnly)
+// UNO ULTRA Server — Refresh token session manager (HttpOnly + dev fallback)
 // ============================================================
 
 import crypto from 'node:crypto';
 import type { Request, Response } from 'express';
+import type { PoolClient } from 'pg';
 import { env } from '../config/env.js';
 import { getPostgresPool, query } from '../persistence/postgres/client.js';
 
 const REFRESH_COOKIE_NAME = 'uno_refresh';
 const REFRESH_TTL_DAYS = 14;
 
+const devRefreshStore = new Map<
+  string,
+  { playerId: string; expiresAt: Date; revoked: boolean }
+>();
+
 function hashToken(rawToken: string): string {
   return crypto.createHash('sha256').update(rawToken).digest('hex');
+}
+
+function isDbUnavailable(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const rec = err as { code?: unknown; errors?: unknown[] };
+  if (typeof rec.code === 'string' && /^(ECONNREFUSED|ENOTFOUND|ETIMEDOUT|57P01|0800[1-6])$/.test(rec.code)) {
+    return true;
+  }
+  if (Array.isArray(rec.errors)) {
+    return rec.errors.some((inner) => isDbUnavailable(inner));
+  }
+  return false;
 }
 
 export interface IssuedRefreshToken {
@@ -24,23 +42,44 @@ export async function issueRefreshToken(playerId: string): Promise<IssuedRefresh
   const tokenHash = hashToken(rawToken);
   const expiresAt = new Date(Date.now() + REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000);
 
-  await query(
-    `INSERT INTO refresh_tokens (player_id, token_hash, expires_at)
-     VALUES ($1, $2, $3)`,
-    [playerId, tokenHash, expiresAt]
-  );
+  try {
+    await query(
+      `INSERT INTO refresh_tokens (player_id, token_hash, expires_at)
+       VALUES ($1, $2, $3)`,
+      [playerId, tokenHash, expiresAt],
+    );
+  } catch (err) {
+    if (env.NODE_ENV !== 'production' && isDbUnavailable(err)) {
+      devRefreshStore.set(tokenHash, { playerId, expiresAt, revoked: false });
+      return { rawToken, expiresAt };
+    }
+    throw err;
+  }
 
   return { rawToken, expiresAt };
 }
 
 export async function rotateRefreshToken(
-  rawToken: string
+  rawToken: string,
 ): Promise<{ playerId: string; rawToken: string; expiresAt: Date } | null> {
   const tokenHash = hashToken(rawToken);
-  const pool = getPostgresPool();
-  const client = await pool.connect();
 
+  const memEntry = devRefreshStore.get(tokenHash);
+  if (memEntry && env.NODE_ENV !== 'production') {
+    if (memEntry.revoked || memEntry.expiresAt.getTime() <= Date.now()) return null;
+    memEntry.revoked = true;
+    const nextRaw = crypto.randomBytes(48).toString('base64url');
+    const nextHash = hashToken(nextRaw);
+    const expiresAt = new Date(Date.now() + REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000);
+    devRefreshStore.set(nextHash, { playerId: memEntry.playerId, expiresAt, revoked: false });
+    return { playerId: memEntry.playerId, rawToken: nextRaw, expiresAt };
+  }
+
+  let activeClient: PoolClient | null = null;
   try {
+    const pool = getPostgresPool();
+    const client = await pool.connect();
+    activeClient = client;
     await client.query('BEGIN');
     const existing = await client.query<{ id: string; player_id: string }>(
       `SELECT id, player_id
@@ -49,7 +88,7 @@ export async function rotateRefreshToken(
           AND revoked_at IS NULL
           AND expires_at > NOW()
         FOR UPDATE`,
-      [tokenHash]
+      [tokenHash],
     );
 
     const row = existing.rows[0];
@@ -67,28 +106,42 @@ export async function rotateRefreshToken(
     await client.query(
       `INSERT INTO refresh_tokens (player_id, token_hash, expires_at)
        VALUES ($1, $2, $3)`,
-      [row.player_id, nextHash, expiresAt]
+      [row.player_id, nextHash, expiresAt],
     );
 
     await client.query('COMMIT');
     return { playerId: row.player_id, rawToken: nextRaw, expiresAt };
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (activeClient) {
+      await activeClient.query('ROLLBACK').catch(() => undefined);
+    }
+    if (env.NODE_ENV !== 'production' && isDbUnavailable(err)) {
+      return null;
+    }
     throw err;
   } finally {
-    client.release();
+    activeClient?.release();
   }
 }
 
 export async function revokeRefreshToken(rawToken: string): Promise<void> {
   const tokenHash = hashToken(rawToken);
-  await query(
-    `UPDATE refresh_tokens
-        SET revoked_at = NOW()
-      WHERE token_hash = $1
-        AND revoked_at IS NULL`,
-    [tokenHash]
-  );
+  const mem = devRefreshStore.get(tokenHash);
+  if (mem) mem.revoked = true;
+  try {
+    await query(
+      `UPDATE refresh_tokens
+          SET revoked_at = NOW()
+        WHERE token_hash = $1
+          AND revoked_at IS NULL`,
+      [tokenHash],
+    );
+  } catch (err) {
+    if (env.NODE_ENV !== 'production' && isDbUnavailable(err)) {
+      return;
+    }
+    throw err;
+  }
 }
 
 export function setRefreshCookie(res: Response, rawToken: string, expiresAt: Date): void {
