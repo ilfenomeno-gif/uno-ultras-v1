@@ -127,7 +127,10 @@ export interface DevStateSnapshot {
   playlistRanks: Record<string, Record<string, DevPlaylistRankRecord>>;
 }
 
-const DEV_STATE_FILE = path.join(os.tmpdir(), 'uno-ultra-dev-state.json');
+const TEST_SUFFIX = process.env['VITEST'] ? `-vitest-${process.pid}` : '';
+const DEV_STATE_FILE = path.join(os.tmpdir(), `uno-ultra-dev-state${TEST_SUFFIX}.json`);
+
+let cachedState: DevStateSnapshot | null = null;
 
 const EMPTY_STATE = (): DevStateSnapshot => ({
   tournamentCredits: {},
@@ -164,7 +167,7 @@ export function canUseDevFallback(err: unknown): boolean {
   return env.NODE_ENV !== 'production' && isDbUnavailableError(err);
 }
 
-export function readDevState(): DevStateSnapshot {
+function loadDevStateFromDisk(): DevStateSnapshot {
   const base = EMPTY_STATE();
   try {
     if (!fs.existsSync(DEV_STATE_FILE)) return base;
@@ -189,9 +192,18 @@ export function readDevState(): DevStateSnapshot {
   }
 }
 
+export function readDevState(): DevStateSnapshot {
+  if (!cachedState) {
+    cachedState = loadDevStateFromDisk();
+  }
+  return cachedState;
+}
+
 export function updateDevState<T>(mutator: (state: DevStateSnapshot) => T): T {
   const state = readDevState();
   const result = mutator(state);
-  fs.writeFileSync(DEV_STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
+  const tmpFile = `${DEV_STATE_FILE}.tmp`;
+  fs.writeFileSync(tmpFile, JSON.stringify(state, null, 2), 'utf8');
+  fs.renameSync(tmpFile, DEV_STATE_FILE);
   return result;
 }

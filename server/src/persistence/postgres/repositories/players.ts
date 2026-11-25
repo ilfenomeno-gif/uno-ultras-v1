@@ -44,7 +44,8 @@ interface StoredDevPlayer {
   updated_at: string;
 }
 
-const DEV_PLAYERS_FILE = path.join(os.tmpdir(), 'uno-ultra-dev-players.json');
+const TEST_SUFFIX = process.env['VITEST'] ? `-vitest-${process.pid}` : '';
+const DEV_PLAYERS_FILE = path.join(os.tmpdir(), `uno-ultra-dev-players${TEST_SUFFIX}.json`);
 const RESERVED_USERNAMES = new Set(['admin', 'moderator', 'system', 'support', 'uno_bot', 'uno_ultra']);
 
 function readDevPlayers(): StoredDevPlayer[] {

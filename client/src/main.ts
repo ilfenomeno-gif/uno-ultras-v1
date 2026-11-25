@@ -81,7 +81,7 @@ function bootstrap(): void {
       fillWithBots: true,
       ...(cfg.variant !== undefined ? { variant: cfg.variant } : {}),
     });
-    if (room.state?.phase === 'lobby') {
+    if (room.state?.phase !== 'playing' && room.state?.phase !== 'finished') {
       colyseus.startMatch();
     }
     router.navigate('game');
