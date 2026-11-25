@@ -4,6 +4,16 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
+## Sessione 2026-11-25 (Parte 5) — QA Live E2E, Persistenza Dev Offline, Multiplayer `remilk12` vs `aragos` & Scalata Pure-Gameplay a SSL
+
+- **Obiettivo**: verificare tutte le meccaniche/sotto-meccaniche e schede live (login, amicizie, inviti, lobby WebSocket Colyseus, varianti UNO, 7 mini-giochi, ELO, Battle Card, Sfide, Shop, Casse, Tornei, Carriera, Replay, Top 100 e Targhette), testare il multiplayer `remilk12` vs `aragos`, misurare la scala difficoltà dei bot per rank e portare `remilk12` a **SSL (`1.600+ MMR`)** con gameplay puro su tutte le `8` modalità.
+- **Stato Lavori**:
+  - `[x]` Risolti i gap di persistenza in modalità dev offline (`Postgres/Redis` spenti su localhost) creando `server/src/persistence/postgres/dev-store.ts` con fallback `canUseDevFallback` su `transactions.ts`, `battle-card.ts`, `challenges.ts`, `matches.ts`, `inventory.ts`, `friends.ts`, `notifications.ts`, aggiornamento profilo in `players.ts`, filtro bucket per-modalità/globale in `leaderboard.ts` e scaling avversario ELO in `mmr.ts` / `match-settlement.ts` (evitando l'ancoraggio fisso dei bot a `400 MMR` ai gradi alti).
+  - `[x]` Verificato multiplayer reale `remilk12` vs `aragos`: amicizia, invio invito partita, lettura notifica, join nella stessa stanza Colyseus (`UnoRoom`), `chat`, `ping`/`pong`, blocco mossa illegale, chiamata `UNO`, rematch e chiusura partita completa + varianti `blitz`, `chaos`, `team`, `custom`.
+  - `[x]` Scalata pure-gameplay di `remilk12` fino a **`1.612 MMR` (`SSL`)** su tutte e `8` le modalità (`Top 100 Globale #54` e presenza Top 100 su tutte e `8` le modalità), Battle Card Livello `48`, `6.894 V-Card`, `3.395 Crediti Torneo`, `10` sfide riscattate, `13` premi Battle Card riscattati, acquisti Shop + rimborso doppione ×N, apertura Casse e iscrizione Torneo `ucs-ssl`.
+
+---
+
 ## Sessione 2026-11-25 (Parte 4) — Spostamento Classifica Top 100 Globale da Carriera a Top 100
 
 - **Obiettivo**: rimuovere la sezione duplicata `Classifica Top 100 Globale` dal tab `Carriera` e spostarla nel tab dedicato **Top 100 Mondiale**, mantenendo tutte le `8` modalità e i formati `1v1`, `3 Giocatori` e `4 Giocatori`.

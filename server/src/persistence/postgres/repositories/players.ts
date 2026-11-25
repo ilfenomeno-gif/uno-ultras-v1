@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { env } from '../../../config/env.js';
 import { query } from '../client.js';
+import { isDbUnavailableError } from '../dev-store.js';
 
 export interface PlayerRow {
   id: string;
@@ -45,18 +46,6 @@ interface StoredDevPlayer {
 
 const DEV_PLAYERS_FILE = path.join(os.tmpdir(), 'uno-ultra-dev-players.json');
 const RESERVED_USERNAMES = new Set(['admin', 'moderator', 'system', 'support', 'uno_bot', 'uno_ultra']);
-
-function isDbUnavailableError(err: unknown): boolean {
-  if (!err || typeof err !== 'object') return false;
-  const rec = err as { code?: unknown; errors?: unknown[] };
-  if (typeof rec.code === 'string' && /^(ECONNREFUSED|ENOTFOUND|ETIMEDOUT|57P01|0800[1-6])$/.test(rec.code)) {
-    return true;
-  }
-  if (Array.isArray(rec.errors)) {
-    return rec.errors.some((inner) => isDbUnavailableError(inner));
-  }
-  return false;
-}
 
 function readDevPlayers(): StoredDevPlayer[] {
   try {
@@ -193,6 +182,36 @@ export async function createPlayer(input: CreatePlayerInput): Promise<PlayerRow>
     }
     throw err;
   }
+}
+
+export function listDevPlayersSnapshot(): PlayerRow[] {
+  return readDevPlayers().map(toPlayerRow);
+}
+
+export function getDevPlayerSnapshot(playerId: string): PlayerRow | null {
+  const found = readDevPlayers().find((p) => p.id === playerId);
+  return found ? toPlayerRow(found) : null;
+}
+
+export function updateDevPlayerSnapshot(
+  playerId: string,
+  patch: {
+    vcard?: number;
+    battle_card_level?: number;
+    mmr?: number;
+    rank_tier?: string;
+  },
+): PlayerRow | null {
+  const list = readDevPlayers();
+  const target = list.find((p) => p.id === playerId);
+  if (!target) return null;
+  if (patch.vcard !== undefined) target.vcard = patch.vcard;
+  if (patch.battle_card_level !== undefined) target.battle_card_level = patch.battle_card_level;
+  if (patch.mmr !== undefined) target.mmr = patch.mmr;
+  if (patch.rank_tier !== undefined) target.rank_tier = patch.rank_tier;
+  target.updated_at = new Date().toISOString();
+  writeDevPlayers(list);
+  return toPlayerRow(target);
 }
 
 export async function updatePlayerRank(

@@ -9,7 +9,9 @@ import {
   REALISTIC_BOT_PROFILES,
   type GameMode,
 } from '@uno/shared';
+import { env } from '../../config/env.js';
 import { query } from '../postgres/client.js';
+import { readDevState, updateDevState } from '../postgres/dev-store.js';
 import { getRedisClient } from './client.js';
 
 const LEADERBOARD_KEY = 'leaderboard:mmr';
@@ -102,6 +104,23 @@ export async function updateLeaderboardScore(
     if (oldest) memoryScores.delete(oldest);
   }
   memoryScores.set(memKey, { username, mmr });
+  memoryScores.set(`global:${playerId}`, { username, mmr });
+
+  if (env.NODE_ENV !== 'production') {
+    try {
+      updateDevState((state) => {
+        const globalMap = (state.leaderboards['global'] ??= {});
+        globalMap[playerId] = { username, mmr };
+        if (bucket?.mode && bucket.playerCount) {
+          const bKey = `${bucket.mode}:${bucket.playerCount}p`;
+          const bMap = (state.leaderboards[bKey] ??= {});
+          bMap[playerId] = { username, mmr };
+        }
+      });
+    } catch {
+      // non-fatal
+    }
+  }
 
   try {
     const client = getRedisClient();
@@ -198,13 +217,38 @@ export async function getTopLeaderboard(
         }
       }
     } catch {
+      const targetBucket = isGlobal ? 'global' : `${mode}:${playerCount}p`;
+      const devBucket = env.NODE_ENV !== 'production' ? readDevState().leaderboards[targetBucket] : undefined;
+      if (devBucket) {
+        for (const [k, info] of Object.entries(devBucket)) {
+          if (!seenNames.has(info.username.toLowerCase())) {
+            seenNames.add(info.username.toLowerCase());
+            const pickedTitle = pickPrestigiousTitleForMMR(info.mmr, titleMode, realEntries.length);
+            realEntries.push({
+              rank: 0,
+              playerId: k,
+              username: info.username,
+              mmr: info.mmr,
+              rankTier: getRankFromMMR(info.mmr),
+              wins: Math.max(1, Math.round(info.mmr / 24)),
+              winRate: 55,
+              title: pickedTitle.name,
+              titleColor: pickedTitle.color,
+              isBot: false,
+            });
+          }
+        }
+      }
+      const prefix = isGlobal ? 'global:' : `${mode}:${playerCount}p:`;
       for (const [k, info] of memoryScores.entries()) {
+        if (!k.startsWith(prefix)) continue;
+        const cleanId = k.slice(prefix.length);
         if (!seenNames.has(info.username.toLowerCase())) {
           seenNames.add(info.username.toLowerCase());
           const pickedTitle = pickPrestigiousTitleForMMR(info.mmr, titleMode, realEntries.length);
           realEntries.push({
             rank: 0,
-            playerId: k,
+            playerId: cleanId,
             username: info.username,
             mmr: info.mmr,
             rankTier: getRankFromMMR(info.mmr),

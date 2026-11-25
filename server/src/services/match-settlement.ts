@@ -94,15 +94,23 @@ export async function settleFinishedMatchWithReceipts(
       { before: number; after: number; delta: number; rankTier: string }
     >();
     if (input.isRanked && rankedHumans.size > 0) {
+      const humanMmrs = [...rankedHumans.values()].map((h) => h.mmr);
+      const avgHumanMmr =
+        humanMmrs.length > 0
+          ? Math.round(humanMmrs.reduce((s, v) => s + v, 0) / humanMmrs.length)
+          : 400;
       const settlements = await settleRankedMatchForPlayers({
         winnerId: input.winnerId,
         playlistMultiplier: modeMultiplier,
-        participants: input.participants.map((p) => ({
-          playerId: p.id,
-          username: rankedHumans.get(p.id)?.username ?? p.username,
-          mmr: rankedHumans.get(p.id)?.mmr ?? 400,
-          isBot: p.isBot || !UUID_RE.test(p.id),
-        })),
+        participants: input.participants.map((p) => {
+          const isHuman = !p.isBot && UUID_RE.test(p.id) && rankedHumans.has(p.id);
+          return {
+            playerId: p.id,
+            username: rankedHumans.get(p.id)?.username ?? p.username,
+            mmr: isHuman ? rankedHumans.get(p.id)!.mmr : avgHumanMmr,
+            isBot: !isHuman,
+          };
+        }),
       });
       for (const s of settlements) {
         mmrUpdates.set(s.playerId, {
@@ -170,8 +178,12 @@ export async function settleFinishedMatchWithReceipts(
             idempotencyKey: `match:${input.matchId}:${p.id}:vcard`,
           });
           vcardBalanceAfter = vcardRes.balanceAfter;
+        } catch (err) {
+          logger.warn({ err, playerId: p.id, matchId: input.matchId }, 'V-Card match reward failed');
+        }
 
-          if (tournamentCreditsEarned > 0) {
+        if (tournamentCreditsEarned > 0) {
+          try {
             await applyBalanceDelta({
               playerId: p.id,
               txType: 'match_reward',
@@ -180,11 +192,19 @@ export async function settleFinishedMatchWithReceipts(
               referenceId: `${input.mode}:${input.matchId}`,
               idempotencyKey: `match:${input.matchId}:${p.id}:tcredits`,
             });
+          } catch (err) {
+            logger.warn({ err, playerId: p.id, matchId: input.matchId }, 'Tournament credits match reward failed');
           }
+        }
 
+        try {
           const bcState = await addBattleCardXp(p.id, xpEarned);
           battleCardLevelAfter = bcState.level;
+        } catch (err) {
+          logger.warn({ err, playerId: p.id, matchId: input.matchId }, 'Battle Card XP update failed');
+        }
 
+        try {
           const metricDeltas = {
             matches_played: 1,
             matches_won: won ? 1 : 0,
@@ -194,7 +214,11 @@ export async function settleFinishedMatchWithReceipts(
           };
           challengesProgressed = Object.values(metricDeltas).filter((v) => v > 0).length;
           await incrementChallengeMetricsBatch(p.id, metricDeltas);
+        } catch (err) {
+          logger.warn({ err, playerId: p.id, matchId: input.matchId }, 'Challenge increment failed');
+        }
 
+        try {
           const rawCount = input.participants.length;
           const bucketCount = rawCount <= 2 ? 2 : rawCount === 3 ? 3 : 4;
           await updateLeaderboardScore(p.id, p.username, mmrAfter, {
@@ -202,7 +226,7 @@ export async function settleFinishedMatchWithReceipts(
             playerCount: bucketCount,
           });
         } catch (err) {
-          logger.warn({ err, playerId: p.id, matchId: input.matchId }, 'Match reward update failed');
+          logger.warn({ err, playerId: p.id, matchId: input.matchId }, 'Leaderboard update failed');
         }
       }
 

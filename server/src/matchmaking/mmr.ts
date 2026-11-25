@@ -3,7 +3,7 @@
 // ============================================================
 
 import { calculateEloDelta, getRankFromMMR } from '@uno/shared';
-import { query } from '../persistence/postgres/client.js';
+import { updatePlayerRank } from '../persistence/postgres/repositories/players.js';
 import { updateLeaderboardScore } from '../persistence/redis/leaderboard.js';
 
 export function computeMatchmakingBand(waitSeconds: number): number {
@@ -52,13 +52,14 @@ export async function settleRankedMatchForPlayers(input: {
     const rankTier = elo.newTier ?? getRankFromMMR(mmrAfter);
 
     try {
-      await query(
-        `UPDATE players SET mmr = $1, rank_tier = $2, updated_at = NOW() WHERE id = $3`,
-        [mmrAfter, rankTier, p.playerId],
-      );
-      await updateLeaderboardScore(p.playerId, p.username, mmrAfter);
+      await updatePlayerRank(p.playerId, mmrAfter, rankTier);
     } catch {
       // Best effort if DB offline in unit test
+    }
+    try {
+      await updateLeaderboardScore(p.playerId, p.username, mmrAfter);
+    } catch {
+      // Best effort if leaderboard unavailable
     }
 
     results.push({

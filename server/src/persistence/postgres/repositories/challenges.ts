@@ -10,7 +10,9 @@ import {
   type ChallengePeriod,
 } from '@uno/shared';
 import { getPostgresPool, query } from '../client.js';
+import { canUseDevFallback, updateDevState } from '../dev-store.js';
 import { addBattleCardXp } from './battle-card.js';
+import { getDevPlayerSnapshot, updateDevPlayerSnapshot } from './players.js';
 
 export interface PlayerChallengeStatus {
   definition: ChallengeDefinition;
@@ -48,46 +50,68 @@ function computeResetDate(period: ChallengePeriod): Date {
 export async function getOrInitPlayerChallenges(
   playerId: string,
 ): Promise<PlayerChallengeStatus[]> {
-  const ids = ALL_CHALLENGES.map((c) => c.id);
-  const periods = ALL_CHALLENGES.map((c) => c.period);
-  const targets = ALL_CHALLENGES.map((c) => c.target);
-  const resets = ALL_CHALLENGES.map((c) => computeResetDate(c.period).toISOString());
+  try {
+    const ids = ALL_CHALLENGES.map((c) => c.id);
+    const periods = ALL_CHALLENGES.map((c) => c.period);
+    const targets = ALL_CHALLENGES.map((c) => c.target);
+    const resets = ALL_CHALLENGES.map((c) => computeResetDate(c.period).toISOString());
 
-  await query(
-    `INSERT INTO player_challenges (player_id, challenge_id, period, progress, target, resets_at)
-     SELECT $1, u.challenge_id, u.period, 0, u.target, u.resets_at
-       FROM UNNEST($2::varchar[], $3::varchar[], $4::integer[], $5::timestamptz[])
-            AS u(challenge_id, period, target, resets_at)
-     ON CONFLICT (player_id, challenge_id)
-     DO UPDATE SET
-       progress  = CASE WHEN player_challenges.resets_at <= NOW() THEN 0 ELSE player_challenges.progress END,
-       claimed   = CASE WHEN player_challenges.resets_at <= NOW() THEN FALSE ELSE player_challenges.claimed END,
-       resets_at = CASE WHEN player_challenges.resets_at <= NOW() THEN EXCLUDED.resets_at ELSE player_challenges.resets_at END`,
-    [playerId, ids, periods, targets, resets],
-  );
+    await query(
+      `INSERT INTO player_challenges (player_id, challenge_id, period, progress, target, resets_at)
+       SELECT $1, u.challenge_id, u.period, 0, u.target, u.resets_at
+         FROM UNNEST($2::varchar[], $3::varchar[], $4::integer[], $5::timestamptz[])
+              AS u(challenge_id, period, target, resets_at)
+       ON CONFLICT (player_id, challenge_id)
+       DO UPDATE SET
+         progress  = CASE WHEN player_challenges.resets_at <= NOW() THEN 0 ELSE player_challenges.progress END,
+         claimed   = CASE WHEN player_challenges.resets_at <= NOW() THEN FALSE ELSE player_challenges.claimed END,
+         resets_at = CASE WHEN player_challenges.resets_at <= NOW() THEN EXCLUDED.resets_at ELSE player_challenges.resets_at END`,
+      [playerId, ids, periods, targets, resets],
+    );
 
-  const res = await query<{
-    challenge_id: string;
-    progress: number;
-    claimed: boolean;
-    resets_at: Date;
-  }>(
-    `SELECT challenge_id, progress, claimed, resets_at
-       FROM player_challenges
-      WHERE player_id = $1`,
-    [playerId],
-  );
-  const byId = new Map(res.rows.map((r) => [r.challenge_id, r]));
+    const res = await query<{
+      challenge_id: string;
+      progress: number;
+      claimed: boolean;
+      resets_at: Date;
+    }>(
+      `SELECT challenge_id, progress, claimed, resets_at
+         FROM player_challenges
+        WHERE player_id = $1`,
+      [playerId],
+    );
+    const byId = new Map(res.rows.map((r) => [r.challenge_id, r]));
 
-  return ALL_CHALLENGES.map((def) => {
-    const row = byId.get(def.id);
-    return {
-      definition: def,
-      progress: Number(row?.progress ?? 0),
-      claimed: Boolean(row?.claimed ?? false),
-      resetsAt: row?.resets_at ?? computeResetDate(def.period),
-    };
-  });
+    return ALL_CHALLENGES.map((def) => {
+      const row = byId.get(def.id);
+      return {
+        definition: def,
+        progress: Number(row?.progress ?? 0),
+        claimed: Boolean(row?.claimed ?? false),
+        resetsAt: row?.resets_at ?? computeResetDate(def.period),
+      };
+    });
+  } catch (err) {
+    if (!canUseDevFallback(err)) throw err;
+    const nowMs = Date.now();
+    return updateDevState((state) => {
+      const pMap = (state.challenges[playerId] ??= {});
+      return ALL_CHALLENGES.map((def) => {
+        const cur = pMap[def.id];
+        if (!cur || new Date(cur.resetsAt).getTime() <= nowMs) {
+          const resetDate = computeResetDate(def.period);
+          pMap[def.id] = { progress: 0, claimed: false, resetsAt: resetDate.toISOString() };
+          return { definition: def, progress: 0, claimed: false, resetsAt: resetDate };
+        }
+        return {
+          definition: def,
+          progress: cur.progress,
+          claimed: cur.claimed,
+          resetsAt: new Date(cur.resetsAt),
+        };
+      });
+    });
+  }
 }
 
 export async function incrementChallengeMetricsBatch(
@@ -105,16 +129,34 @@ export async function incrementChallengeMetricsBatch(
   }
   if (challengeIds.length === 0) return;
 
-  await getOrInitPlayerChallenges(playerId);
-  await query(
-    `UPDATE player_challenges pc
-        SET progress = LEAST(pc.target, pc.progress + u.delta),
-            updated_at = NOW()
-       FROM UNNEST($2::varchar[], $3::integer[]) AS u(challenge_id, delta)
-      WHERE pc.player_id = $1
-        AND pc.challenge_id = u.challenge_id`,
-    [playerId, challengeIds, increments],
-  );
+  try {
+    await getOrInitPlayerChallenges(playerId);
+    await query(
+      `UPDATE player_challenges pc
+          SET progress = LEAST(pc.target, pc.progress + u.delta),
+              updated_at = NOW()
+         FROM UNNEST($2::varchar[], $3::integer[]) AS u(challenge_id, delta)
+        WHERE pc.player_id = $1
+          AND pc.challenge_id = u.challenge_id`,
+      [playerId, challengeIds, increments],
+    );
+  } catch (err) {
+    if (!canUseDevFallback(err)) throw err;
+    await getOrInitPlayerChallenges(playerId);
+    updateDevState((state) => {
+      const pMap = (state.challenges[playerId] ??= {});
+      for (const ch of ALL_CHALLENGES) {
+        const d = deltas[ch.metric] ?? 0;
+        if (d <= 0) continue;
+        const entry = (pMap[ch.id] ??= {
+          progress: 0,
+          claimed: false,
+          resetsAt: computeResetDate(ch.period).toISOString(),
+        });
+        entry.progress = Math.min(ch.target, entry.progress + Math.floor(d));
+      }
+    });
+  }
 }
 
 export async function incrementChallengeMetric(
@@ -133,58 +175,83 @@ export async function claimChallengeReward(
   const def = ALL_CHALLENGES.find((c) => c.id === challengeId);
   if (!def) throw new Error(`Sfida inesistente: ${challengeId}`);
 
-  const pool = getPostgresPool();
-  const client = await pool.connect();
-
   try {
-    await client.query('BEGIN');
-    const rowRes = await client.query<{ progress: number; target: number; claimed: boolean }>(
-      `SELECT progress, target, claimed
-         FROM player_challenges
-        WHERE player_id = $1 AND challenge_id = $2
-        FOR UPDATE`,
-      [playerId, challengeId],
-    );
-    const row = rowRes.rows[0];
-    if (!row) throw new Error('Sfida non inizializzata');
-    if (row.claimed) throw new Error('Ricompensa gia riscattata');
-    if (Number(row.progress) < Number(row.target)) {
-      throw new Error(`Sfida incompleta (${row.progress}/${row.target})`);
+    const pool = getPostgresPool();
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+      const rowRes = await client.query<{ progress: number; target: number; claimed: boolean }>(
+        `SELECT progress, target, claimed
+           FROM player_challenges
+          WHERE player_id = $1 AND challenge_id = $2
+          FOR UPDATE`,
+        [playerId, challengeId],
+      );
+      const row = rowRes.rows[0];
+      if (!row) throw new Error('Sfida non inizializzata');
+      if (row.claimed) throw new Error('Ricompensa gia riscattata');
+      if (Number(row.progress) < Number(row.target)) {
+        throw new Error(`Sfida incompleta (${row.progress}/${row.target})`);
+      }
+
+      await client.query(
+        `UPDATE player_challenges SET claimed = TRUE, updated_at = NOW()
+          WHERE player_id = $1 AND challenge_id = $2`,
+        [playerId, challengeId],
+      );
+
+      const pRes = await client.query<{ vcard: number }>(
+        `UPDATE players
+            SET vcard = vcard + $1, updated_at = NOW()
+          WHERE id = $2
+        RETURNING vcard`,
+        [def.rewardVCard, playerId],
+      );
+      const vcardAfter = Number(pRes.rows[0]?.vcard ?? 0);
+
+      await client.query(
+        `INSERT INTO economy_transactions (player_id, tx_type, currency, amount_delta, balance_after, reference_id)
+         VALUES ($1, 'challenge_reward', 'vcard', $2, $3, $4)`,
+        [playerId, def.rewardVCard, vcardAfter, challengeId],
+      );
+      await client.query('COMMIT');
+
+      await addBattleCardXp(playerId, def.rewardXp);
+      return {
+        challengeId,
+        rewardVCard: def.rewardVCard,
+        rewardXp: def.rewardXp,
+        vcardAfter,
+      };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
-
-    await client.query(
-      `UPDATE player_challenges SET claimed = TRUE, updated_at = NOW()
-        WHERE player_id = $1 AND challenge_id = $2`,
-      [playerId, challengeId],
-    );
-
-    const pRes = await client.query<{ vcard: number }>(
-      `UPDATE players
-          SET vcard = vcard + $1, updated_at = NOW()
-        WHERE id = $2
-      RETURNING vcard`,
-      [def.rewardVCard, playerId],
-    );
-    const vcardAfter = Number(pRes.rows[0]?.vcard ?? 0);
-
-    await client.query(
-      `INSERT INTO economy_transactions (player_id, tx_type, currency, amount_delta, balance_after, reference_id)
-       VALUES ($1, 'challenge_reward', 'vcard', $2, $3, $4)`,
-      [playerId, def.rewardVCard, vcardAfter, challengeId],
-    );
-    await client.query('COMMIT');
+  } catch (err) {
+    if (!canUseDevFallback(err)) throw err;
+    const claimed = updateDevState((state) => {
+      const entry = state.challenges[playerId]?.[challengeId];
+      if (!entry) throw new Error('Sfida non inizializzata');
+      if (entry.claimed) throw new Error('Ricompensa gia riscattata');
+      if (entry.progress < def.target) {
+        throw new Error(`Sfida incompleta (${entry.progress}/${def.target})`);
+      }
+      entry.claimed = true;
+      const player = getDevPlayerSnapshot(playerId);
+      const nextVcard = Number(player?.vcard ?? 0) + def.rewardVCard;
+      updateDevPlayerSnapshot(playerId, { vcard: nextVcard });
+      return nextVcard;
+    });
 
     await addBattleCardXp(playerId, def.rewardXp);
     return {
       challengeId,
       rewardVCard: def.rewardVCard,
       rewardXp: def.rewardXp,
-      vcardAfter,
+      vcardAfter: claimed,
     };
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
   }
 }
