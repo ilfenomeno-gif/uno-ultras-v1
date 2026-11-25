@@ -2,7 +2,7 @@
 // UNO ULTRA Client — 7 Mini-Games Pure Display & Action Helpers
 // ============================================================
 
-import type { AnyMiniGameMode } from '@uno/shared';
+import { REALISTIC_BOT_PROFILES, type AnyMiniGameMode } from '@uno/shared';
 
 export interface MiniGameActionLike {
   readonly type: string;
@@ -253,8 +253,25 @@ export function computeBlackjackTotal(cards: readonly Record<string, unknown>[])
  */
 export function formatScoreSummary(view: Record<string, unknown>): string {
   const candidate = view['scores'] ?? view['distances'] ?? view['chips'];
-  if (!candidate || typeof candidate !== 'object') return 'Tu: 0 · Bot_1: 0';
+  if (!candidate || typeof candidate !== 'object') return 'Tu: 0 · Avversario: 0';
   const entries = Object.entries(candidate as Record<string, unknown>);
-  if (entries.length === 0) return 'Tu: 0 · Bot_1: 0';
+  if (entries.length === 0) return 'Tu: 0 · Avversario: 0';
   return entries.map(([pid, val]) => `${pid}: ${String(val ?? 0)}`).join(' · ');
+}
+
+/**
+ * Builds distinct realistic opponent names for mini-game tables (excluding 'Tu').
+ */
+export function pickMiniGameBotNames(botCount: number, seed = Date.now()): string[] {
+  const count = Math.max(1, Math.min(3, botCount));
+  const total = REALISTIC_BOT_PROFILES.length;
+  const start = Math.abs(seed) % total;
+  const picked: string[] = [];
+  for (let i = 0; i < total && picked.length < count; i++) {
+    const candidate = REALISTIC_BOT_PROFILES[(start + i * 7) % total];
+    if (candidate && candidate.name !== 'Tu' && !picked.includes(candidate.name)) {
+      picked.push(candidate.name);
+    }
+  }
+  return picked.length > 0 ? picked : ['🗡️ DreadForce'];
 }

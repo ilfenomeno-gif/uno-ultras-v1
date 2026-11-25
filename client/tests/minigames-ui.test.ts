@@ -8,6 +8,7 @@ import {
   formatMiniGameActionLabel,
   formatScoreSummary,
   formatStandardCardLabel,
+  pickMiniGameBotNames,
   type MiniGameActionLike,
 } from '../src/ui/minigames/minigame-helpers.js';
 
@@ -113,5 +114,10 @@ describe('7 Mini-Games Full-Screen UI Helpers', () => {
     expect(computeBlackjackTotal([{ rank: 1 }, { rank: 10 }])).toBe(21);
     expect(computeBlackjackTotal([{ rank: 1 }, { rank: 9 }, { rank: 5 }])).toBe(15);
     expect(formatScoreSummary({ scores: { Tu: 15, Bot_1: 0 } })).toBe('Tu: 15 · Bot_1: 0');
+
+    const bots = pickMiniGameBotNames(3, 42);
+    expect(bots).toHaveLength(3);
+    expect(new Set(bots).size).toBe(3);
+    expect(bots[0]).not.toMatch(/^Bot_/);
   });
 });

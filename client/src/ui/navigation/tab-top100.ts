@@ -226,6 +226,10 @@ export function createTop100View(): HTMLElement {
       const titleEl = document.createElement('span');
       titleEl.className = 'career-title-pill';
       titleEl.textContent = entry.title ?? rankInfo.tier;
+      if (entry.titleColor) {
+        titleEl.style.color = entry.titleColor;
+        titleEl.style.borderColor = entry.titleColor;
+      }
 
       const statRow = document.createElement('div');
       statRow.className = 'top100-podium-stats';
@@ -275,6 +279,10 @@ export function createTop100View(): HTMLElement {
       const c3 = document.createElement('span');
       c3.className = 'top100-player-title';
       c3.textContent = entry.title ?? '—';
+      if (entry.titleColor) {
+        c3.style.color = entry.titleColor;
+        c3.style.fontWeight = '700';
+      }
 
       const c4 = document.createElement('span');
       c4.style.color = rInfo.colorHex;

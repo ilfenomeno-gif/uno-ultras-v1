@@ -21,6 +21,7 @@ import {
   formatMiniGameActionLabel,
   formatScoreSummary,
   formatStandardCardLabel,
+  pickMiniGameBotNames,
   type MiniGameActionLike,
 } from './minigame-helpers.js';
 
@@ -586,7 +587,7 @@ function renderModeBoard(ctx: RenderBoardContext): HTMLElement {
 
 export function openMiniGameSandboxModal(
   mode: AnyMiniGameMode,
-  opts: { ranked?: boolean } = {},
+  opts: { ranked?: boolean; playerCount?: number } = {},
 ): void {
   const previousStage = document.querySelector('.mg-fs-stage');
   previousStage?.remove();
@@ -595,10 +596,10 @@ export function openMiniGameSandboxModal(
     document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const engine = MINI_GAME_ENGINES[mode];
   const isRanked = Boolean(opts.ranked);
-  const players = Array.from({ length: Math.max(2, engine.minPlayers) }, (_, idx) =>
-    idx === 0 ? 'Tu' : `Bot_${idx}`,
-  );
+  const desiredCount = opts.playerCount && opts.playerCount >= 2 ? opts.playerCount : engine.minPlayers;
+  const totalSeats = Math.max(Math.max(2, engine.minPlayers), Math.min(engine.maxPlayers, desiredCount));
   let matchSeed = Date.now();
+  let players = ['Tu', ...pickMiniGameBotNames(totalSeats - 1, matchSeed)];
   let state = engine.createInitialState(`local_${mode}_${matchSeed}`, players, matchSeed);
   let startedAtMs = Date.now();
   let turnsPlayed = 0;
@@ -619,7 +620,7 @@ export function openMiniGameSandboxModal(
 
   const turnPill = el('div', 'mg-fs-turn-pill', 'Turno: Tu');
   const hudRight = el('div', 'mg-fs-hud-right');
-  const scoreBadge = el('span', 'mg-fs-score', 'Tu: 0 · Bot_1: 0');
+  const scoreBadge = el('span', 'mg-fs-score', players.map((p) => `${p}: 0`).join(' · '));
 
   const fsBtn = document.createElement('button');
   fsBtn.type = 'button';
@@ -684,7 +685,10 @@ export function openMiniGameSandboxModal(
     announce(`Partita terminata. Vincitore: ${state.winnerId ?? 'Pareggio'}.`, 'assertive');
 
     const myScore = Number(state.scores['Tu'] ?? (iWon ? 100 : 0));
-    const oppScore = Number(state.scores['Bot_1'] ?? (iWon ? 0 : 100));
+    const oppEntries = Object.entries(state.scores).filter(([k]) => k !== 'Tu');
+    const oppScore = Number(
+      oppEntries.reduce((max, [, v]) => Math.max(max, Number(v ?? 0)), 0),
+    );
     const durationSec = Math.max(1, Math.round((Date.now() - startedAtMs) / 1000));
 
     if (!isAuthenticated()) return;
@@ -794,7 +798,7 @@ export function openMiniGameSandboxModal(
           'mg-victory-sub',
           iWon
             ? `Hai dominato a ${engine.label}! ${formatScoreSummary(view)}`
-            : `Vincitore: ${state.winnerId ?? 'Bot_1'} · ${formatScoreSummary(view)}`,
+            : `Vincitore: ${state.winnerId ?? players[1] ?? 'Avversario'} · ${formatScoreSummary(view)}`,
         ),
       );
 
@@ -831,6 +835,7 @@ export function openMiniGameSandboxModal(
         turnsPlayed = 0;
         settledThisMatch = false;
         lastReceipt = null;
+        players = ['Tu', ...pickMiniGameBotNames(totalSeats - 1, matchSeed)];
         state = engine.createInitialState(`local_${mode}_${matchSeed}`, players, matchSeed);
         selectedCardId = null;
         playEarcon('confirm');

@@ -14,6 +14,7 @@ import {
   decideAction,
   getThinkDelayMs,
   PlayerState,
+  REALISTIC_BOT_PROFILES,
   TCP_CHANNELS,
   UnoRoomState,
   validatePresetForPlayers,
@@ -367,11 +368,20 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
 
     if (this.fillWithBots) {
       let botIdx = 1;
+      const usedNames = new Set(participants.map((p) => p.username.toLowerCase()));
+      const startBotOffset = Date.now() % REALISTIC_BOT_PROFILES.length;
       while (participants.length < this.targetPlayers) {
         const profile = BOT_PROFILES_ROTATION[(botIdx - 1) % BOT_PROFILES_ROTATION.length] ?? 'STRAT';
+        const botCandidate =
+          REALISTIC_BOT_PROFILES[(startBotOffset + botIdx - 1) % REALISTIC_BOT_PROFILES.length];
+        const botName =
+          botCandidate && !usedNames.has(botCandidate.name.toLowerCase())
+            ? botCandidate.name
+            : `UNO_BOT_${botIdx}`;
+        usedNames.add(botName.toLowerCase());
         participants.push({
           id: `bot_${botIdx}`,
-          username: `UNO_BOT_${botIdx}`,
+          username: botName,
           isBot: true,
           aiProfile: profile,
         });

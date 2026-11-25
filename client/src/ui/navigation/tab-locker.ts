@@ -4,6 +4,7 @@
 
 import {
   CATALOG_BY_ID,
+  LEGACY_TITLE_CATEGORIES,
   LEGACY_TITLES,
   LEGACY_TITLES_BY_ID,
   type CosmeticRarity,
@@ -40,18 +41,22 @@ function isCrateId(id: string): id is CrateId {
 }
 
 const TITLE_FILTER_CHIPS: ReadonlyArray<{ id: 'all' | LegacyTitleCategory; label: string }> = [
-  { id: 'all', label: 'Tutte (334)' },
-  { id: 'rank', label: 'Rank' },
-  { id: 'ucs', label: 'UCS' },
-  { id: 'uno', label: 'UNO' },
-  { id: 'scala40', label: 'Scala 40' },
-  { id: 'ruba', label: 'Ruba Mazzetto' },
-  { id: 'blackjack', label: 'Blackjack' },
-  { id: 'club', label: 'Club' },
-  { id: 'multi', label: 'Multi-Modalità' },
-  { id: 'battlepass', label: 'Battle Pass' },
-  { id: 'special', label: 'Speciali' },
+  { id: 'all', label: `Tutte (${LEGACY_TITLES.length})` },
+  ...LEGACY_TITLE_CATEGORIES.map((c) => ({
+    id: c.id,
+    label: `${c.icon} ${c.label}`,
+  })),
 ];
+
+function formatTitleMissionLine(itemId: string): string {
+  const lt = LEGACY_TITLES_BY_ID[itemId];
+  if (!lt) return 'Cosmetico sbloccato nel tuo profilo.';
+  if (lt.legacyUnavailable) return `🔒 ${lt.description}`;
+  if (lt.missionTarget && lt.missionTarget > 1) {
+    return `🎯 ${lt.description} (0/${lt.missionTarget})`;
+  }
+  return `🎯 ${lt.description}`;
+}
 
 function resolveItemRarity(itemId: string): CosmeticRarity {
   return CATALOG_BY_ID[itemId]?.rarity ?? LEGACY_TITLES_BY_ID[itemId]?.rarity ?? 'common';
@@ -65,8 +70,7 @@ function resolveDisplayName(itemId: string | undefined): string {
 function resolveDisplayDesc(itemId: string): string {
   return (
     CATALOG_BY_ID[itemId]?.description ??
-    LEGACY_TITLES_BY_ID[itemId]?.description ??
-    'Cosmetico sbloccato nel tuo profilo.'
+    formatTitleMissionLine(itemId)
   );
 }
 
@@ -592,6 +596,13 @@ export function createLockerView(): HTMLElement {
         }
 
         card.append(topRow, artThumb, nameEl);
+
+        if (legacyTitle) {
+          const missionNote = document.createElement('div');
+          missionNote.className = 'locker-inv-mission';
+          missionNote.textContent = formatTitleMissionLine(entry.itemId);
+          card.appendChild(missionNote);
+        }
 
         card.addEventListener('click', () => {
           selectedItemId = entry.itemId;

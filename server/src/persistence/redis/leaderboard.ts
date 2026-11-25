@@ -5,7 +5,8 @@
 import {
   GAME_MODES,
   getRankFromMMR,
-  LEGACY_TITLES,
+  pickPrestigiousTitleForMMR,
+  REALISTIC_BOT_PROFILES,
   type GameMode,
 } from '@uno/shared';
 import { query } from '../postgres/client.js';
@@ -24,17 +25,11 @@ export interface LeaderboardEntry {
   wins: number;
   winRate: number;
   title: string;
+  titleColor?: string;
   isBot?: boolean;
 }
 
 const memoryScores = new Map<string, { username: string; mmr: number }>();
-
-const CONTENDER_HANDLES: readonly string[] = [
-  'Nova_Strike', 'Vega_Prime', 'Zenith_SSL', 'Kuro_Ace', 'Solaris_X',
-  'Hyper_Fox', 'Neon_Drifter', 'Astra_Vortex', 'Blaze_99', 'Echo_Delta',
-  'Cyber_Valkyrie', 'Chrono_King', 'Omega_Pulse', 'Prism_Racer', 'Luna_Edge',
-  'Shadow_Stack', 'Apex_Maverick', 'Turbo_Rei', 'Volt_Phantom', 'Nyx_Circuit',
-];
 
 function leaderboardKeyForBucket(mode?: string, playerCount?: number): string {
   if (!mode || !playerCount) return LEADERBOARD_KEY;
@@ -57,29 +52,29 @@ function generateBucketContenders(
 ): LeaderboardEntry[] {
   const seedOffset = deterministicHash(`${mode}:${playerCount}`);
   const out: LeaderboardEntry[] = [];
-  const highTitles = LEGACY_TITLES.filter((t) => (t.mmrReq ?? 0) >= 800 || t.category === 'ucs');
+  const totalBots = REALISTIC_BOT_PROFILES.length;
 
-  for (let idx = 0; idx < 110 && out.length < 100; idx++) {
-    const prefix = CONTENDER_HANDLES[(idx + seedOffset) % CONTENDER_HANDLES.length] ?? 'Contender';
-    const suffix = 10 + ((seedOffset + idx * 37) % 89);
-    const username = `${prefix}_${suffix}`;
-    if (excludeNames.has(username.toLowerCase())) continue;
+  for (let idx = 0; idx < totalBots + 10 && out.length < 100; idx++) {
+    const bot = REALISTIC_BOT_PROFILES[(idx + (seedOffset % 17)) % totalBots]!;
+    if (excludeNames.has(bot.name.toLowerCase())) continue;
 
-    const jitter = ((seedOffset + idx * 17) % 19) - 9;
-    const mmr = Math.max(420, Math.round(1960 - idx * 13 + jitter));
-    const wins = Math.max(8, Math.round(340 - idx * 2.8 + (seedOffset % 15)));
-    const winRate = Math.max(48, Math.min(82, Math.round(74 - idx * 0.22)));
-    const pickedTitle = highTitles[(idx + seedOffset) % highTitles.length];
+    // Higher ranks keep higher MMR and progressively more prestigious titles
+    const curveMmr = Math.round(bot.baseMmr - idx * 5 + ((seedOffset + idx * 13) % 19) - 9);
+    const mmr = Math.max(450, Math.min(2250, curveMmr));
+    const wins = Math.max(12, Math.round((mmr - 200) / 5.2 + ((seedOffset + idx) % 14)));
+    const winRate = Math.max(49, Math.min(84, Math.round(52 + (mmr - 450) / 58)));
+    const pickedTitle = pickPrestigiousTitleForMMR(mmr, mode, idx + seedOffset);
 
     out.push({
       rank: 0,
       playerId: `s1_${mode}_${playerCount}p_${idx + 1}`,
-      username,
+      username: bot.name,
       mmr,
       rankTier: getRankFromMMR(mmr),
       wins,
       winRate,
-      title: pickedTitle?.name ?? 'Contendente Stagione 1',
+      title: pickedTitle.name,
+      titleColor: pickedTitle.color,
       isBot: true,
     });
   }
@@ -133,15 +128,17 @@ export async function getTopLeaderboard(
   try {
     const client = getRedisClient();
     if (client.isOpen) {
-      const key = opts?.mode && opts?.playerCount
-        ? leaderboardKeyForBucket(mode, playerCount)
-        : LEADERBOARD_KEY;
+      const key =
+        opts?.mode && opts?.playerCount
+          ? leaderboardKeyForBucket(mode, playerCount)
+          : LEADERBOARD_KEY;
       const items = await client.zRangeWithScores(key, 0, safeLimit - 1, { REV: true });
       for (const entry of items) {
         const [playerId = '', username = 'Unknown'] = entry.value.split('|');
         const mmr = Math.round(entry.score);
         if (!seenNames.has(username.toLowerCase())) {
           seenNames.add(username.toLowerCase());
+          const pickedTitle = pickPrestigiousTitleForMMR(mmr, mode, realEntries.length);
           realEntries.push({
             rank: 0,
             playerId,
@@ -150,7 +147,8 @@ export async function getTopLeaderboard(
             rankTier: getRankFromMMR(mmr),
             wins: Math.max(1, Math.round(mmr / 20)),
             winRate: 56,
-            title: 'Giocatore Classificato',
+            title: pickedTitle.name,
+            titleColor: pickedTitle.color,
             isBot: false,
           });
         }
@@ -174,6 +172,7 @@ export async function getTopLeaderboard(
         if (!seenNames.has(r.username.toLowerCase())) {
           seenNames.add(r.username.toLowerCase());
           const mmr = Number(r.mmr);
+          const pickedTitle = pickPrestigiousTitleForMMR(mmr, mode, realEntries.length);
           realEntries.push({
             rank: 0,
             playerId: r.id,
@@ -182,16 +181,17 @@ export async function getTopLeaderboard(
             rankTier: r.rank_tier,
             wins: Math.max(1, Math.round(mmr / 24)),
             winRate: 54,
-            title: 'Contendente Live',
+            title: pickedTitle.name,
+            titleColor: pickedTitle.color,
             isBot: false,
           });
         }
       }
     } catch {
-      // Fallback to in-memory cache + contenders
       for (const [k, info] of memoryScores.entries()) {
         if (!seenNames.has(info.username.toLowerCase())) {
           seenNames.add(info.username.toLowerCase());
+          const pickedTitle = pickPrestigiousTitleForMMR(info.mmr, mode, realEntries.length);
           realEntries.push({
             rank: 0,
             playerId: k,
@@ -200,7 +200,8 @@ export async function getTopLeaderboard(
             rankTier: getRankFromMMR(info.mmr),
             wins: Math.max(1, Math.round(info.mmr / 24)),
             winRate: 55,
-            title: 'Contendente Live',
+            title: pickedTitle.name,
+            titleColor: pickedTitle.color,
             isBot: false,
           });
         }
@@ -208,7 +209,7 @@ export async function getTopLeaderboard(
     }
   }
 
-  const combined = [
+  return [
     ...realEntries,
     ...generateBucketContenders(mode, playerCount, seenNames),
   ]
@@ -218,6 +219,4 @@ export async function getTopLeaderboard(
       ...entry,
       rank: idx + 1,
     }));
-
-  return combined;
 }

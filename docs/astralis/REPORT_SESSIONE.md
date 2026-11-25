@@ -4,7 +4,18 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
-## Sessione 2026-11-25 (Parte 2) — Fix Registrazione & Login con Fallback Dev Locale
+## Sessione 2026-11-25 (Parte 3) — 15 Categorie Targhette (364 Titoli), Bot Realistici in Mini-Giochi/UNO/Top 100 & Prestigio Scalare
+
+- **Obiettivo**: includere tutte le `15` categorie richieste di Targhette (`UNO`, `Scala 40`, `Ruba Mazzetto`, `Black Jack`, `Titoli Rank`, `Scopa — Zero Residuo`, `Burraco — Sincronia Perfetta`, `Poker Texas — Oltre il Bluff`, `Millemiglia — Velocità Terminale`, `Titoli Extra`, `Club`, `Multi-Modalità`, `UCS — Ultra Champions Series`, `Stagione 1 — Trofei Legacy`, `Stagione 2 — Trofei Legacy`) complete di missioni di sblocco e stati legacy, usare i `120` bot realistici (`🗡️ DreadForce`, `🤖 PikeKard`, `🎭 GhostEdge`, `🌪 PeakMode`, ...) in UNO, tutti e 7 i mini-giochi e Top 100 Mondiale, e scalare automaticamente il prestigio della targhetta in base al rango/MMR.
+- **Stato Lavori**:
+  - `[x]` Rigenerato `shared/src/types/legacy-catalog.ts` con `364` targhette su `15` `LEGACY_TITLE_CATEGORIES`, `120` `REALISTIC_BOT_PROFILES` e helper `pickPrestigiousTitleForMMR(mmr, mode, seed)`.
+  - `[x]` Collegati bot realistici e titoli scalari su `server/src/persistence/redis/leaderboard.ts`, `server/src/rooms/uno/uno-room.ts`, `server/src/rooms/mini-games/blackjack-room.ts`, `client/src/main.ts`, `client/src/ui/minigames/minigame-helpers.ts`, `client/src/ui/minigames/sandbox-modal.ts`, `client/src/ui/navigation/top100-helpers.ts`, `client/src/ui/navigation/tab-top100.ts`, `client/src/net/tcp/rest-client.ts` e `client/src/styles/tournaments.css`.
+  - `[x]` Aggiornato `Armadietto -> Titoli` in `client/src/ui/navigation/tab-locker.ts` con tutti i `15` filtri categoria + lettore missione di sblocco e trofei `Non più ottenibile`.
+  - `[x]` Test aggiornati in `client/tests/top100-and-legacy.test.ts` e `client/tests/minigames-ui.test.ts` + `npm run ci` verde (**27 suite Vitest / 165 test passati**: shared `74`, server `40`, client `51`; `0` errori ESLint/TS) + SHA-256 `contenuto-game.md` intatto (`83CAE3C057B35C22B460CC6F61BCF11AA355D1DB5F9EB4F2EC40517B2A1BD4D9`).
+
+---
+
+## Sessione 2026-11-25 (Parte 2) — Fix Registrazione & Login con Fallback Dev Locale (`f6ce3b3`)
 
 - **Obiettivo**: eliminare l'errore `HTTP 500` su `POST /api/auth/register` e `POST /api/auth/login` quando PostgreSQL/Docker Desktop non sono avviati, mantenendo invariata la persistenza PostgreSQL reale in produzione e quando il DB è online.
 - **Stato Lavori**:

@@ -2,7 +2,12 @@
 // UNO ULTRA Client — Pure Helpers for Top 100 Mondiale Tab
 // ============================================================
 
-import { getRankFromMMR, LEGACY_TITLES, type GameMode } from '@uno/shared';
+import {
+  getRankFromMMR,
+  pickPrestigiousTitleForMMR,
+  REALISTIC_BOT_PROFILES,
+  type GameMode,
+} from '@uno/shared';
 import type { TopLeaderboardEntry } from '../../net/tcp/rest-client.js';
 
 export interface Top100ModeOption {
@@ -43,41 +48,38 @@ function hashBucket(text: string): number {
   return Math.abs(h >>> 0);
 }
 
-const HANDLES: readonly string[] = [
-  'Nova_Strike', 'Vega_Prime', 'Zenith_SSL', 'Kuro_Ace', 'Solaris_X',
-  'Hyper_Fox', 'Neon_Drifter', 'Astra_Vortex', 'Blaze_99', 'Echo_Delta',
-  'Cyber_Valkyrie', 'Chrono_King', 'Omega_Pulse', 'Prism_Racer', 'Luna_Edge',
-  'Shadow_Stack', 'Apex_Maverick', 'Turbo_Rei', 'Volt_Phantom', 'Nyx_Circuit',
-];
-
 /**
- * Deterministic client fallback if backend Top 100 endpoint is momentarily offline.
+ * Deterministic client fallback if backend Top 100 endpoint is momentarily offline,
+ * using realistic contenders and prestige-scaled titles.
  */
 export function buildFallbackTop100Entries(
   mode: GameMode,
   playerCount: 2 | 3 | 4,
 ): TopLeaderboardEntry[] {
   const seed = hashBucket(`${mode}:${playerCount}`);
-  const highTitles = LEGACY_TITLES.filter((t) => (t.mmrReq ?? 0) >= 800 || t.category === 'ucs');
   const out: TopLeaderboardEntry[] = [];
+  const totalBots = REALISTIC_BOT_PROFILES.length;
 
   for (let i = 0; i < 100; i++) {
-    const base = HANDLES[(i + seed) % HANDLES.length] ?? 'Contender';
-    const suffix = 10 + ((seed + i * 37) % 89);
-    const jitter = ((seed + i * 17) % 19) - 9;
-    const mmr = Math.max(420, Math.round(1960 - i * 13 + jitter));
-    const t = highTitles[(i + seed) % highTitles.length];
+    const bot = REALISTIC_BOT_PROFILES[(i + (seed % 17)) % totalBots]!;
+    const curveMmr = Math.round(bot.baseMmr - i * 5 + ((seed + i * 13) % 19) - 9);
+    const mmr = Math.max(450, Math.min(2250, curveMmr));
+    const title = pickPrestigiousTitleForMMR(mmr, mode, i + seed);
     out.push({
-      rank: i + 1,
+      rank: 0,
       playerId: `fallback_${mode}_${playerCount}_${i + 1}`,
-      username: `${base}_${suffix}`,
+      username: bot.name,
       mmr,
       rankTier: getRankFromMMR(mmr),
-      wins: Math.max(8, Math.round(340 - i * 2.8 + (seed % 15))),
-      winRate: Math.max(48, Math.min(82, Math.round(74 - i * 0.22))),
-      title: t?.name ?? 'Contendente Stagione 1',
+      wins: Math.max(12, Math.round((mmr - 200) / 5.2 + ((seed + i) % 14))),
+      winRate: Math.max(49, Math.min(84, Math.round(52 + (mmr - 450) / 58))),
+      title: title.name,
+      titleColor: title.color,
       isBot: true,
     });
   }
-  return out;
+
+  return out
+    .sort((a, b) => b.mmr - a.mmr || a.username.localeCompare(b.username))
+    .map((entry, idx) => ({ ...entry, rank: idx + 1 }));
 }

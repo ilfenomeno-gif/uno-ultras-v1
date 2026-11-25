@@ -308,6 +308,7 @@ export interface TopLeaderboardEntry {
   wins?: number;
   winRate?: number;
   title?: string;
+  titleColor?: string;
   isBot?: boolean;
 }
 

@@ -6,6 +6,7 @@ import type { Client } from 'colyseus';
 import {
   blackjackEngine,
   MINI_GAME_ENGINES,
+  REALISTIC_BOT_PROFILES,
   type AnyMiniGameMode,
   type MiniGameStateBase,
 } from '@uno/shared';
@@ -37,6 +38,7 @@ export abstract class AbstractMiniGameRoom<
   private readonly actionThrottle = new RoomActionThrottle(15, 2000);
   private startedAtMs = 0;
   private turnCount = 0;
+  private readonly botUsernames = new Map<string, string>();
 
   override onCreate(options: MiniGameRoomOptions): void {
     this.targetPlayers = Math.max(1, Math.min(4, options.maxPlayers ?? 2));
@@ -103,8 +105,14 @@ export abstract class AbstractMiniGameRoom<
      
     const engine = MINI_GAME_ENGINES[this.mode] as any;
     const participants = [...this.lobbyPlayers];
+    this.botUsernames.clear();
+    const botSeed = Date.now() % REALISTIC_BOT_PROFILES.length;
     while (participants.length < Math.max(engine.minPlayers, this.targetPlayers)) {
-      participants.push(`bot_${participants.length + 1}`);
+      const botId = `bot_${participants.length + 1}`;
+      const botProfile =
+        REALISTIC_BOT_PROFILES[(botSeed + participants.length * 7) % REALISTIC_BOT_PROFILES.length];
+      this.botUsernames.set(botId, botProfile?.name ?? botId);
+      participants.push(botId);
     }
     this.startedAtMs = Date.now();
     this.turnCount = 0;
@@ -125,7 +133,7 @@ export abstract class AbstractMiniGameRoom<
       durationSec: Math.max(1, Math.round((Date.now() - this.startedAtMs) / 1000)),
       participants: state.playerOrder.map((pid) => ({
         id: pid,
-        username: pid,
+        username: this.botUsernames.get(pid) ?? pid,
         isBot: pid.startsWith('bot_'),
         score: state.scores[pid] ?? 0,
       })),
