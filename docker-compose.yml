@@ -76,7 +76,6 @@ services:
       BCRYPT_ROUNDS: ${BCRYPT_ROUNDS}
     ports:
       - "${WS_PORT:-3000}:3000"
-      - "${UDP_TELEMETRY_PORT:-41234}:41234/udp"
       - "${WEBRTC_UDP_MIN:-19302}-${WEBRTC_UDP_MAX:-19312}:19302-19312/udp"
     networks: [uno-net]
 
@@ -105,5 +104,4 @@ services:
     depends_on: [server]
     ports:
       - "${HTTP_PORT:-80}:80"
-      - "${HTTPS_PORT:-443}:443"
     networks: [uno-net]

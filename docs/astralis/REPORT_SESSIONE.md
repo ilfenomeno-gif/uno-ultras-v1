@@ -4,6 +4,17 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
+## Sessione 2026-11-25 (Parte 11) — Pulizia Dipendenze (`three`), Allineamento Node `>=20`, Rimozione `:443` senza TLS & UDP Telemetry Opt-In/Anti-Flood
+
+- **Obiettivo**: chiudere le segnalazioni residue su dipendenze inutilizzate, requisiti Node/Docker troppo restrittivi, porta HTTPS non terminata da TLS e protezione anti-flood della telemetria UDP.
+- **Stato Lavori**:
+  - `[x]` Rimossi `three` e `@types/three` (zero import in `client/src/`) da `client/package.json` e dalla regola `vendor-three` in `client/vite.config.ts`, aggiornando `package-lock.json` con `npm install` per la compatibilità `npm ci`.
+  - `[x]` Allineati i requisiti LTS a **Node `>=20.0.0`** / **npm `>=10.0.0`** in `package.json`, `.nvmrc` (`20`), `docker/server/Dockerfile`, `docker/client/Dockerfile` (`node:20-alpine`) e `README.md`.
+  - `[x]` Rimossa l'esposizione non configurata della porta `443` da `docker-compose.yml`, `docker/client/Dockerfile` e `.env.example`.
+  - `[x]` Resa la telemetria UDP opt-in (`ENABLE_UDP_TELEMETRY=true`, spenta di default in `server/src/index.ts` e non più esposta in `docker-compose.yml`), aggiungendo in `server/src/net/udp/telemetry-udp.ts` il tetto `512` byte per datagramma (`udp_telemetry_oversized_total`) e il rate-limiter per IP (`30` pacchetti/sec, `udp_telemetry_rate_limited_total`) esteso ai pacchetti `PING`, con test di integrazione in `server/tests/integration/economy-and-gemini.test.ts`.
+
+---
+
 ## Sessione 2026-11-25 (Parte 10) — Hardening RNG/CoTURN/Docker Produzione, Allineamento `README.md` & Code-Splitting Vite
 
 - **Obiettivo**: chiudere le criticità reali emerse dalla verifica architetturale e di sicurezza del repository: seed RNG crittografici lato server, hardening CoTURN e `docker-compose.prod.yml`, aggiornamento accurato di `README.md` e suddivisione dei chunk Vite sotto `500 kB`.

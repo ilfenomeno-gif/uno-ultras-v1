@@ -166,6 +166,14 @@ describe('Matchmaking, Brackets, CoTURN/WebRTC & UDP Telemetry', () => {
       });
       await new Promise((r) => setTimeout(r, 40));
       expect(udp.getLatestForPlayer('u-telemetry')?.rttMs).toBe(18);
+
+      // Oversized UDP packet (> 512 bytes) must be dropped without touching latestStats
+      const oversized = Buffer.alloc(600, 0x41);
+      await new Promise<void>((resolve, reject) => {
+        sender.send(oversized, port, '127.0.0.1', (err) => (err ? reject(err) : resolve()));
+      });
+      await new Promise((r) => setTimeout(r, 30));
+      expect(udp.getLatestForPlayer('u-telemetry')?.rttMs).toBe(18);
     } finally {
       sender.close();
       await udp.stop();

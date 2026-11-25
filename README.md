@@ -10,7 +10,8 @@ Monorepo TypeScript per **UNO ULTRA**, piattaforma card game competitiva con ser
 
 Il browser **non** usa socket UDP grezzi per il gameplay:
 - **Gameplay, Auth & Economia (HTTP REST + Colyseus WebSocket):** Tutte le azioni di partita (`play_card`, `draw_card`, `call_uno`, `challenge_wild4`), autenticazione JWT, coda matchmaking, economia Postgres ACID, social/presenza e tornei viaggiano su **Express (`/api/*`) + Colyseus WebSocket (`/ws`, `/matchmake/`)**. Le mani private non entrano mai nello stato pubblico Colyseus (`cardCount` pubblico, mani inviate via `client.send('hand', ...)`).
-- **Telemetria UDP & WebRTC Opzionale:** La porta `:41234/udp` (`telemetry-udp`) è dedicata esclusivamente a probe/client nativi esterni opzionali, mentre `:3478` / `:5349` servono il relay CoTURN WebRTC (protetto in produzione da credenziali effimere HMAC e blocco SSRF verso reti private).
+- **Telemetria UDP & WebRTC Opzionale:** Il listener UDP (`ENABLE_UDP_TELEMETRY=true`, disabilitato di default e protetto con limite pacchetto 512 B e rate-limit per IP) è riservato esclusivamente a eventuali probe/client nativi esterni, mentre `:3478` / `:5349` servono il relay CoTURN WebRTC (protetto in produzione da credenziali effimere HMAC e blocco SSRF verso reti private).
+- **CI Automatica:** [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) esegue automaticamente `npm ci`, lint (`ESLint 9`), `typecheck`, `build` e tutti i test su push/PR verso `main` usando `.nvmrc` (`20`).
 
 ---
 
@@ -19,8 +20,8 @@ Il browser **non** usa socket UDP grezzi per il gameplay:
 | Workspace | Tecnologia | Contenuto principale |
 |---|---|---|
 | [`shared/`](./shared) | Pure TypeScript, Zod, `@colyseus/schema` | Motore UNO (`deck`, `rules`, `moves`, `reducer`, varianti `standard`/`blitz`/`chaos`/`team`/`custom`), 22 tier Ranked + sotto-divisioni `I–IV`, ELO adattivo, regole competitive (classificazione 10 match anti-smurfing, abilità ponderata di gruppo, limite 3 livelli, penalità abbandono), 7 mini-game, catalogo `364` targhette, schemi Colyseus, validatori Zod. |
-| [`server/`](./server) | Node 24, Express 4, Colyseus 0.16, `pg`, Redis | API REST (`/api/auth`, `/api/friends`, `/api/notifications`, `/api/shop`, `/api/inventory`, `/api/battle-card`, `/api/challenges`, `/api/leaderboard`, `/api/tournaments`, `/api/matchmaking`, `/api/progression`, `/api/sync`, `/api/health`), migrazioni SQL idempotenti (`0001`–`0010`), fallback dev locale offline (`dev-store.ts`), ladder Top 100 viva a 220 bot persistenti (`±5` rivali), seed RNG crittografici (`crypto.randomInt`), `RoomActionThrottle`, `GeminiBotAdvisor` opzionale (`ENABLE_GEMINI_BOTS`, zero leak delle mani altrui). |
-| [`client/`](./client) | Vanilla TypeScript, Vite 6, Three.js | SPA hash-routed senza framework (`0` file `.tsx`), tavolo UNO completo con cosmetici Armadietto (`avatar`, `frame`, `card_back`, `title`, `theme`) + bot con nome/rank/titolo, 7 Mini-Giochi a schermo intero, Launcher playlist `1v1`/`3G`/`4G`, Drawer Social, Battle Card *Neon Stadium*, Sfide, Tornei, Top 100, Carriera, Negozio V-Card e governance ASTRALIS v3. |
+| [`server/`](./server) | Node 20+, Express 4, Colyseus 0.16, `pg`, Redis | API REST (`/api/auth`, `/api/friends`, `/api/notifications`, `/api/shop`, `/api/inventory`, `/api/battle-card`, `/api/challenges`, `/api/leaderboard`, `/api/tournaments`, `/api/matchmaking`, `/api/progression`, `/api/sync`, `/api/health`), migrazioni SQL idempotenti (`0001`–`0010`), fallback dev locale offline (`dev-store.ts`), ladder Top 100 viva a 220 bot persistenti (`±5` rivali), seed RNG crittografici (`crypto.randomInt`), `RoomActionThrottle`, `GeminiBotAdvisor` opzionale (`ENABLE_GEMINI_BOTS`, zero leak delle mani altrui). |
+| [`client/`](./client) | Vanilla TypeScript, Vite 6 | SPA hash-routed senza framework (`0` file `.tsx`), tavolo UNO completo con cosmetici Armadietto (`avatar`, `frame`, `card_back`, `title`, `theme`) + bot con nome/rank/titolo, 7 Mini-Giochi a schermo intero, Launcher playlist `1v1`/`3G`/`4G`, Drawer Social, Battle Card *Neon Stadium*, Sfide, Tornei, Top 100, Carriera, Negozio V-Card e governance ASTRALIS v3. |
 
 ---
 
@@ -33,7 +34,7 @@ Il browser **non** usa socket UDP grezzi per il gameplay:
 
 ## Prerequisiti & Avvio Rapido
 
-- **Node.js** `>= 24.0.0` (`.nvmrc`: `24.13.1`) e **npm** `>= 11.0.0`
+- **Node.js** `>= 20.0.0` (`.nvmrc`: `20`) e **npm** `>= 10.0.0`
 - **Docker Desktop** opzionale (PostgreSQL 16, Redis 7, CoTURN, Nginx e container server/client; in sviluppo locale è disponibile anche il fallback persistente su disco).
 
 ### 1. Sviluppo locale & Verifica CI

@@ -54,10 +54,14 @@ async function bootstrap(): Promise<void> {
   } catch {
     // non-fatal se Postgres offline
   }
-  try {
-    await telemetryUdpServer.start();
-  } catch {
-    // non-fatal se porta UDP occupata in test
+  if (process.env['ENABLE_UDP_TELEMETRY'] === 'true') {
+    try {
+      await telemetryUdpServer.start();
+    } catch {
+      // non-fatal se porta UDP occupata in test
+    }
+  } else {
+    logger.info('UDP Telemetry disabled (set ENABLE_UDP_TELEMETRY=true to enable)');
   }
 
   await gameServer.listen(env.WS_PORT);

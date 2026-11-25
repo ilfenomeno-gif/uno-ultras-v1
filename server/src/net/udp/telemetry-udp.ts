@@ -18,8 +18,38 @@ export interface TelemetryPacket {
 export class UdpTelemetryServer {
   private socket: dgram.Socket | null = null;
   private readonly latestStats = new Map<string, TelemetryPacket & { updatedAtMs: number }>();
+  private readonly ipRates = new Map<string, { count: number; windowStartMs: number }>();
   private static readonly MAX_ENTRIES = 2000;
   private static readonly TTL_MS = 5 * 60_000;
+  private static readonly MAX_PACKET_BYTES = 512;
+  private static readonly RATE_LIMIT_WINDOW_MS = 1000;
+  private static readonly MAX_PACKETS_PER_WINDOW = 30;
+  private static readonly MAX_IP_BUCKETS = 2000;
+
+  private allowRemotePacket(remoteAddress: string): boolean {
+    const now = Date.now();
+    const bucket = this.ipRates.get(remoteAddress);
+    if (!bucket || now - bucket.windowStartMs >= UdpTelemetryServer.RATE_LIMIT_WINDOW_MS) {
+      if (!bucket && this.ipRates.size >= UdpTelemetryServer.MAX_IP_BUCKETS) {
+        for (const [ip, entry] of this.ipRates) {
+          if (now - entry.windowStartMs >= UdpTelemetryServer.RATE_LIMIT_WINDOW_MS) {
+            this.ipRates.delete(ip);
+          }
+        }
+        if (this.ipRates.size >= UdpTelemetryServer.MAX_IP_BUCKETS) {
+          const oldestIp = this.ipRates.keys().next().value;
+          if (oldestIp) this.ipRates.delete(oldestIp);
+        }
+      }
+      this.ipRates.set(remoteAddress, { count: 1, windowStartMs: now });
+      return true;
+    }
+    if (bucket.count >= UdpTelemetryServer.MAX_PACKETS_PER_WINDOW) {
+      return false;
+    }
+    bucket.count += 1;
+    return true;
+  }
 
   start(port = Number(process.env['UDP_TELEMETRY_PORT'] ?? 41234)): Promise<number> {
     if (this.socket) return Promise.resolve(port);
@@ -30,6 +60,14 @@ export class UdpTelemetryServer {
         if (!this.socket) reject(err);
       });
       sock.on('message', (msg, rinfo) => {
+        if (msg.length > UdpTelemetryServer.MAX_PACKET_BYTES) {
+          metrics.inc('udp_telemetry_oversized_total');
+          return;
+        }
+        if (!this.allowRemotePacket(rinfo.address)) {
+          metrics.inc('udp_telemetry_rate_limited_total');
+          return;
+        }
         try {
           const decoded = decodeBinary<TelemetryPacket>(new Uint8Array(msg));
           metrics.inc('udp_telemetry_packets_total');

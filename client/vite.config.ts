@@ -18,7 +18,6 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (id.includes('node_modules/three')) return 'vendor-three';
           if (id.includes('node_modules/colyseus.js') || id.includes('@colyseus')) {
             return 'vendor-colyseus';
           }
