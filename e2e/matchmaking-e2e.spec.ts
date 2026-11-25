@@ -10,20 +10,33 @@ async function registerAndEnterLobby(page: Page, username: string): Promise<void
   await expect(page.locator('.launcher-play-btn')).toBeVisible({ timeout: 15_000 });
 }
 
-test('two browser contexts matchmake into the same UNO room, play cards, and reach settlement', async ({
+test('two browser contexts matchmake into the same UNO room, reject uninvited WebSocket intruder, play cards, and reach settlement', async ({
   browser,
 }) => {
   test.setTimeout(120_000);
   const suffix = `${Date.now().toString(36)}_${Math.floor(Math.random() * 1000)}`;
   const usernameA = `E2E_A_${suffix}`;
   const usernameB = `E2E_B_${suffix}`;
+  const usernameIntruder = `E2E_X_${suffix}`;
+
+  if (process.env['CI'] || process.env['E2E_USE_REAL_INFRA'] === 'true') {
+    const healthRes = await fetch('http://127.0.0.1:3001/api/health');
+    expect(healthRes.status).toBe(200);
+    const health = (await healthRes.json()) as {
+      dependencies?: { postgres?: string; redis?: string };
+    };
+    expect(health.dependencies?.postgres).toBe('up');
+    expect(health.dependencies?.redis).toBe('up');
+  }
 
   const contextA = await browser.newContext();
   const contextB = await browser.newContext();
+  const contextIntruder = await browser.newContext();
 
   try {
     const pageA = await contextA.newPage();
     const pageB = await contextB.newPage();
+    const pageIntruder = await contextIntruder.newPage();
     const runtimeLogs: string[] = [];
 
     for (const [label, page] of [
@@ -41,6 +54,7 @@ test('two browser contexts matchmake into the same UNO room, play cards, and rea
     await Promise.all([
       registerAndEnterLobby(pageA, usernameA),
       registerAndEnterLobby(pageB, usernameB),
+      registerAndEnterLobby(pageIntruder, usernameIntruder),
     ]);
 
     // Usa variante Blitz (5 carte iniziali) su coda 1v1 Classificata
@@ -69,6 +83,25 @@ test('two browser contexts matchmake into the same UNO room, play cards, and rea
     const roomIdB = (await roomBadgeB.textContent())?.trim();
     expect(roomIdA).toBeTruthy();
     expect(roomIdA).toBe(roomIdB);
+
+    const rawRoomId = roomIdA!.replace(/^Room\s+/, '');
+
+    // Verifica reale su WebSocket Colyseus: un terzo utente autenticato non in allowedPlayerIds viene respinto da UnoRoom.onAuth
+    const intruderAttempt = await pageIntruder.evaluate(async (targetRoomId) => {
+      const { getToken } = await import('/src/state/profile-store.ts');
+      const { joinUnoRoomById } = await import('/src/net/tcp/colyseus-client.ts');
+      try {
+        await joinUnoRoomById(targetRoomId, getToken() ?? '');
+        return { joined: true, error: '' };
+      } catch (err) {
+        return {
+          joined: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    }, rawRoomId);
+    expect(intruderAttempt.joined).toBe(false);
+    expect(intruderAttempt.error).toMatch(/Accesso negato/i);
 
     // Verifica che gli avversari al tavolo siano davvero i due contesti umani (zero bot)
     await expect(pageA.locator('[data-role="opponents"]')).toContainText(usernameB);
@@ -153,5 +186,6 @@ test('two browser contexts matchmake into the same UNO room, play cards, and rea
   } finally {
     await contextA.close();
     await contextB.close();
+    await contextIntruder.close();
   }
 });

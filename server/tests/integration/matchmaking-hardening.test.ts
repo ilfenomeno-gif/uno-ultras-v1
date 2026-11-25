@@ -3,8 +3,9 @@ import type { AddressInfo } from 'node:net';
 import type { Client } from 'colyseus';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
-const { createRoomMock } = vi.hoisted(() => ({
+const { createRoomMock, queryRoomsMock } = vi.hoisted(() => ({
   createRoomMock: vi.fn(),
+  queryRoomsMock: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('colyseus', async (importOriginal) => {
@@ -14,6 +15,7 @@ vi.mock('colyseus', async (importOriginal) => {
     matchMaker: {
       ...actual.matchMaker,
       createRoom: createRoomMock,
+      query: queryRoomsMock,
     },
   };
 });
@@ -30,12 +32,15 @@ let baseUrl = '';
 const playerAId = '11111111-1111-4111-8111-111111111111';
 const playerBId = '22222222-2222-4222-8222-222222222222';
 const intruderId = '33333333-3333-4333-8333-333333333333';
+const capTesterId = '55555555-5555-4555-8555-555555555555';
 
 let tokenA = '';
 let tokenB = '';
 let tokenIntruder = '';
+let tokenCapTester = '';
 
 const originalBotFallbackEnv = process.env['MATCHMAKING_BOT_FALLBACK_MS'];
+const originalMaxRoomsEnv = process.env['MAX_ACTIVE_MATCHMADE_ROOMS'];
 
 function createTestUnoRoom(roomId: string): {
   room: UnoRoom;
@@ -89,17 +94,26 @@ describe('Matchmaking Hardening & Negative Paths', () => {
     tokenA = signAccessToken({ sub: playerAId, username: 'MM_Hard_A' });
     tokenB = signAccessToken({ sub: playerBId, username: 'MM_Hard_B' });
     tokenIntruder = signAccessToken({ sub: intruderId, username: 'MM_Intruder' });
+    tokenCapTester = signAccessToken({ sub: capTesterId, username: 'MM_CapTester' });
   });
 
   afterEach(() => {
     createRoomMock.mockReset();
+    queryRoomsMock.mockReset();
+    queryRoomsMock.mockResolvedValue([]);
     matchmakingQueue.cancel(playerAId);
     matchmakingQueue.cancel(playerBId);
     matchmakingQueue.cancel(intruderId);
+    matchmakingQueue.cancel(capTesterId);
     if (originalBotFallbackEnv === undefined) {
       delete process.env['MATCHMAKING_BOT_FALLBACK_MS'];
     } else {
       process.env['MATCHMAKING_BOT_FALLBACK_MS'] = originalBotFallbackEnv;
+    }
+    if (originalMaxRoomsEnv === undefined) {
+      delete process.env['MAX_ACTIVE_MATCHMADE_ROOMS'];
+    } else {
+      process.env['MAX_ACTIVE_MATCHMADE_ROOMS'] = originalMaxRoomsEnv;
     }
   });
 
@@ -172,7 +186,7 @@ describe('Matchmaking Hardening & Negative Paths', () => {
     expect(statusBodyA.status).toBe('cancelled');
   });
 
-  it('decides bot fallback server-side atomically so subsequent human enqueue cannot form a ghost room', async () => {
+  it('fires server-side bot fallback timer autonomously without GET /status side-effects', async () => {
     process.env['MATCHMAKING_BOT_FALLBACK_MS'] = '40';
     createRoomMock.mockResolvedValue({ roomId: 'room_bot_fallback_1' });
 
@@ -185,8 +199,19 @@ describe('Matchmaking Hardening & Negative Paths', () => {
     const bodyA = (await enqA.json()) as { ticket: { ticketId: string }; matched: unknown };
     expect(bodyA.matched).toBeNull();
 
-    await new Promise((r) => setTimeout(r, 70));
+    // Attende lo scadere del timer lato server SENZA effettuare alcun polling prima
+    await new Promise((r) => setTimeout(r, 90));
+    expect(createRoomMock).toHaveBeenCalledTimes(1);
+    expect(createRoomMock).toHaveBeenCalledWith(
+      'uno',
+      expect.objectContaining({
+        fillWithBots: true,
+        matchmade: true,
+        allowedPlayerIds: [playerAId],
+      }),
+    );
 
+    // GET /status legge in modo puro il risultato già prodotto dal timer
     const statusA = await fetch(`${baseUrl}/matchmaking/status/${bodyA.ticket.ticketId}`, {
       headers: { Authorization: `Bearer ${tokenA}` },
     });
@@ -201,14 +226,7 @@ describe('Matchmaking Hardening & Negative Paths', () => {
     expect(fallbackBody.matchType).toBe('bot_fallback');
     expect(fallbackBody.roomId).toBe('room_bot_fallback_1');
     expect(fallbackBody.allowedPlayerIds).toEqual([playerAId]);
-    expect(createRoomMock).toHaveBeenCalledWith(
-      'uno',
-      expect.objectContaining({
-        fillWithBots: true,
-        matchmade: true,
-        allowedPlayerIds: [playerAId],
-      }),
-    );
+    expect(createRoomMock).toHaveBeenCalledTimes(1);
 
     // Un secondo giocatore che entra dopo il fallback non viene mai accoppiato con A
     const enqB = await fetch(`${baseUrl}/matchmaking/enqueue`, {
@@ -221,8 +239,20 @@ describe('Matchmaking Hardening & Negative Paths', () => {
     expect(bodyB.matched).toBeNull();
   });
 
+  it('rejects enqueue with 503 when active matchmade room cap is reached', async () => {
+    process.env['MAX_ACTIVE_MATCHMADE_ROOMS'] = '1';
+    queryRoomsMock.mockResolvedValue([{ roomId: 'existing_uno_room_1' }]);
+
+    const res = await fetch(`${baseUrl}/matchmaking/enqueue`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenCapTester}` },
+      body: JSON.stringify({ mode: 'uno', ranked: false, targetPlayers: 2 }),
+    });
+    expect(res.status).toBe(503);
+    expect(createRoomMock).not.toHaveBeenCalled();
+  });
+
   it('handles no-show timeouts in UnoRoom (fills partial lobby with bots, disconnects empty room)', async () => {
-    // Caso 1: entra solo A -> dopo noShowTimeoutMs scatta il bot-fallback e la partita parte
     const partial = createTestUnoRoom('mm_noshow_partial');
     partial.room.onCreate({
       maxPlayers: 2,
@@ -244,7 +274,6 @@ describe('Matchmaking Hardening & Negative Paths', () => {
       partial.room.onDispose();
     }
 
-    // Caso 2: 0 ingressi -> dopo noShowTimeoutMs la stanza esegue disconnect()
     const empty = createTestUnoRoom('mm_noshow_empty');
     empty.room.onCreate({
       maxPlayers: 2,

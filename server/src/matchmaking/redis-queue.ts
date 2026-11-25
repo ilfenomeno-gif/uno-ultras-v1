@@ -44,3 +44,27 @@ export async function removeRedisQueueMembers(
   if (!client.isOpen) return;
   await client.zRem(key, [...playerIds]);
 }
+
+const CLAIM_QUEUE_MEMBER_LUA = `
+if redis.call('ZSCORE', KEYS[1], ARGV[1]) then
+  redis.call('ZREM', KEYS[1], ARGV[1])
+  return 1
+else
+  return 0
+end
+`;
+
+export async function claimRedisQueueMember(
+  mode: GameMode,
+  ranked: boolean,
+  playerId: string,
+): Promise<boolean> {
+  const key = `mmq:${mode}:${ranked ? 'ranked' : 'casual'}`;
+  const client = getRedisClient();
+  if (!client.isOpen) return true;
+  const res = await client.eval(CLAIM_QUEUE_MEMBER_LUA, {
+    keys: [key],
+    arguments: [playerId],
+  });
+  return Number(res) === 1;
+}

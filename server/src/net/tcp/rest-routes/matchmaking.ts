@@ -15,6 +15,7 @@ import {
 import { authRequired } from '../../../auth/middleware.js';
 import { matchmakingQueue } from '../../../matchmaking/queue.js';
 import {
+  claimRedisQueueMember,
   pushRedisQueueMember,
   removeRedisQueueMembers,
 } from '../../../matchmaking/redis-queue.js';
@@ -28,7 +29,81 @@ import { createRateLimiter } from '../../../security/rate-limiter.js';
 
 export const matchmakingRouter = Router();
 
-const mmLimiter = createRateLimiter({ scope: 'matchmaking', max: 20, windowSeconds: 60 });
+const mmLimiter = createRateLimiter({ scope: 'matchmaking', max: 12, windowSeconds: 60 });
+const fallbackTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function clearFallbackTimer(ticketId: string): void {
+  const existing = fallbackTimers.get(ticketId);
+  if (existing) {
+    clearTimeout(existing);
+    fallbackTimers.delete(ticketId);
+  }
+}
+
+async function isMatchmadeRoomCapReached(): Promise<boolean> {
+  const maxRooms = Math.max(1, Number(process.env['MAX_ACTIVE_MATCHMADE_ROOMS'] ?? 200));
+  try {
+    const rooms = await matchMaker.query({ name: 'uno' });
+    return rooms.length >= maxRooms;
+  } catch {
+    return false;
+  }
+}
+
+async function runServerBotFallback(playerId: string, ticketId: string): Promise<void> {
+  const claimed = matchmakingQueue.claimForBotFallback(playerId, ticketId);
+  if (!claimed) return;
+
+  const claimedRedis = await claimRedisQueueMember(
+    claimed.mode,
+    claimed.ranked,
+    claimed.playerId,
+  );
+  if (!claimedRedis) return;
+
+  if (await isMatchmadeRoomCapReached()) {
+    await cacheMatchmakingTicket(ticketId, {
+      status: 'cancelled',
+      reason: 'room_cap_reached',
+      ticketId,
+      playerId,
+      mode: claimed.mode,
+      ranked: claimed.ranked,
+    });
+    return;
+  }
+
+  let roomId: string | undefined;
+  if (claimed.mode === 'uno') {
+    try {
+      const created = await matchMaker.createRoom('uno', {
+        maxPlayers: claimed.targetPlayers,
+        ranked: claimed.ranked,
+        fillWithBots: true,
+        variant: claimed.variant ?? 'standard',
+        matchmade: true,
+        allowedPlayerIds: [claimed.playerId],
+      });
+      roomId = created.roomId;
+    } catch {
+      // Fallback when running HTTP-only unit tests without Colyseus server booted
+    }
+  }
+
+  await cacheMatchmakingTicket(ticketId, {
+    status: 'matched',
+    matchType: 'bot_fallback',
+    matchId: randomUUID(),
+    ticketId,
+    playerId,
+    mode: claimed.mode,
+    ranked: claimed.ranked,
+    targetPlayers: claimed.targetPlayers,
+    variant: claimed.variant ?? 'standard',
+    allowedPlayerIds: [claimed.playerId],
+    ...(roomId ? { roomId } : {}),
+  });
+}
 
 const EnqueueSchema = z.object({
   mode: z.enum(GAME_MODES).default('uno'),
@@ -105,6 +180,17 @@ matchmakingRouter.post('/enqueue', authRequired, mmLimiter, async (req, res) => 
     return;
   }
 
+  if (await isMatchmadeRoomCapReached()) {
+    res.status(503).json({ error: 'Capacità massima stanze raggiunta, riprova tra poco' });
+    return;
+  }
+
+  const prevTicket = matchmakingQueue.cancelAndGetTicket(playerId);
+  if (prevTicket) {
+    clearFallbackTimer(prevTicket.ticketId);
+    await removeRedisQueueMembers(prevTicket.mode, prevTicket.ranked, [playerId]);
+  }
+
   const effectiveMmr = computeWeightedPartyMMR(partyMmrs, { ranked: parsed.data.ranked });
   const fallbackDelayMs = Math.max(20, Number(process.env['MATCHMAKING_BOT_FALLBACK_MS'] ?? 3500));
   const fallbackAtMs = Date.now() + fallbackDelayMs;
@@ -158,6 +244,7 @@ matchmakingRouter.post('/enqueue', authRequired, mmLimiter, async (req, res) => 
     }
 
     for (const member of match.players) {
+      clearFallbackTimer(member.ticketId);
       await removeRedisQueueMembers(match.mode, match.ranked, [member.playerId]);
       await cacheMatchmakingTicket(member.ticketId, {
         status: 'matched',
@@ -180,6 +267,15 @@ matchmakingRouter.post('/enqueue', authRequired, mmLimiter, async (req, res) => 
         ...(roomId ? { roomId } : {}),
       };
     }
+  }
+
+  if (!matchedResponse) {
+    const timer = setTimeout(() => {
+      fallbackTimers.delete(ticket.ticketId);
+      void runServerBotFallback(playerId, ticket.ticketId);
+    }, fallbackDelayMs);
+    timer.unref();
+    fallbackTimers.set(ticket.ticketId, timer);
   }
 
   res.status(200).json({
@@ -207,41 +303,6 @@ matchmakingRouter.get('/status/:ticketId', authRequired, async (req, res) => {
     return;
   }
 
-  if (ticket['status'] === 'searching') {
-    const claimed = matchmakingQueue.claimForBotFallback(req.user!.sub, ticketId);
-    if (claimed) {
-      await removeRedisQueueMembers(claimed.mode, claimed.ranked, [claimed.playerId]);
-      let roomId: string | undefined;
-      if (claimed.mode === 'uno') {
-        try {
-          const created = await matchMaker.createRoom('uno', {
-            maxPlayers: claimed.targetPlayers,
-            ranked: claimed.ranked,
-            fillWithBots: true,
-            variant: claimed.variant ?? 'standard',
-            matchmade: true,
-            allowedPlayerIds: [claimed.playerId],
-          });
-          roomId = created.roomId;
-        } catch {
-          // Fallback when running HTTP-only unit tests without Colyseus server booted
-        }
-      }
-
-      const updated: Record<string, unknown> = {
-        ...ticket,
-        status: 'matched',
-        matchType: 'bot_fallback',
-        matchId: randomUUID(),
-        allowedPlayerIds: [claimed.playerId],
-        ...(roomId ? { roomId } : {}),
-      };
-      await cacheMatchmakingTicket(ticketId, updated);
-      res.status(200).json(updated);
-      return;
-    }
-  }
-
   res.status(200).json(ticket);
 });
 
@@ -252,6 +313,7 @@ matchmakingRouter.delete('/cancel', authRequired, async (req, res) => {
     ? (req.query['mode'] as GameMode)
     : 'uno';
   if (removed) {
+    clearFallbackTimer(removed.ticketId);
     await cacheMatchmakingTicket(removed.ticketId, {
       status: 'cancelled',
       ticketId: removed.ticketId,

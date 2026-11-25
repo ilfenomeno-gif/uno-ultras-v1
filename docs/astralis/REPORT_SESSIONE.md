@@ -4,6 +4,17 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
+## Sessione 2026-11-25 (Parte 14) — CI Production-Parity (PostgreSQL 16 + Redis 7), Fallback Timer Autonomo, Claim Lua & Intruso WebSocket E2E
+
+- **Obiettivo**: eseguire l'E2E in CI contro PostgreSQL 16 e Redis 7 reali con `NODE_ENV=production`, spostare il fallback bot in un timer lato server rendendo `GET /status` puramente side-effect free, aggiungere claim atomico Lua su Redis, tetto stanze (`503`) / rate limit stretto e test reale WebSocket di un intruso nell'E2E.
+- **Stato Lavori**:
+  - `[x]` Claim atomico Lua su Redis (`claimRedisQueueMember` in `server/src/matchmaking/redis-queue.ts`) + timer server-side (`runServerBotFallback`, `fallbackTimers`, `clearFallbackTimer`), `GET /api/matchmaking/status/:ticketId` reso puro/read-only, `mmLimiter` stretto a `12/min` e cap stanze `MAX_ACTIVE_MATCHMADE_ROOMS` (`503`) in `server/src/net/tcp/rest-routes/matchmaking.ts`.
+  - `[x]` Test server (`server/tests/integration/matchmaking-hardening.test.ts`, `6` test): prova che il timer server-side crea la stanza bot autonomamente prima del polling e verifica il rigetto `503` a cap stanze raggiunto.
+  - `[x]` CI & E2E Production-Parity: aggiunti service container `postgres:16-alpine` e `redis:7-alpine` in `.github/workflows/ci.yml`, `NODE_ENV=production` in `playwright.config.ts` (`E2E_USE_REAL_INFRA=true`) e test reale in `e2e/matchmaking-e2e.spec.ts` su `postgres/redis: up` + ingresso WebSocket reale di un terzo browser intruso respinto da `UnoRoom.onAuth`.
+  - `[x]` Aggiornato `docs/adr/0006-authoritative-matchmaking-flow.md`.
+
+---
+
 ## Sessione 2026-11-25 (Parte 13) — Hardening Matchmaking Server-Side, Test Negativi & Fix CI GitHub Actions
 
 - **Obiettivo**: chiudere i punti deboli del matchmaking (autorizzazione posti, fallback bot deciso dal server, gestione no-show), aggiungere test di integrazione sui percorsi negativi, riparare il workflow GitHub Actions fallito su `66832da` e documentare ADR/API.

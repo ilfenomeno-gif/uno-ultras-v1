@@ -9,6 +9,29 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: uno
+          POSTGRES_PASSWORD: uno_dev_password
+          POSTGRES_DB: uno_ultra
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U uno -d uno_ultra"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -38,6 +61,16 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run 2-context matchmaking Playwright E2E test
+        env:
+          E2E_USE_REAL_INFRA: 'true'
+          POSTGRES_HOST: 127.0.0.1
+          POSTGRES_PORT: '5432'
+          POSTGRES_USER: uno
+          POSTGRES_PASSWORD: uno_dev_password
+          POSTGRES_DB: uno_ultra
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: '6379'
+          REDIS_PASSWORD: ''
         run: npm run test:e2e
 
       - name: Upload Playwright failure artifacts & traces
