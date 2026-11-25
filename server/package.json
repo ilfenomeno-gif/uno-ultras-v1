@@ -13,12 +13,12 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@colyseus/redis-driver": "^0.16.1",
-    "@colyseus/redis-presence": "^0.16.4",
-    "@colyseus/ws-transport": "^0.16.0",
+    "@colyseus/redis-driver": "^0.18.7",
+    "@colyseus/redis-presence": "^0.18.6",
+    "@colyseus/ws-transport": "^0.18.5",
     "@uno/shared": "*",
     "bcrypt": "^5.1.1",
-    "colyseus": "^0.16.0",
+    "colyseus": "^0.18.12",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.13.1",
