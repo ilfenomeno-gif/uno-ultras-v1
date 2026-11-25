@@ -379,6 +379,7 @@ body.hide-key-hints .uno-card__hotkey {
   display: grid;
   place-items: center;
   background: rgba(3, 6, 15, 0.78);
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
 }
 
@@ -474,13 +475,11 @@ body.hide-key-hints .uno-card__hotkey {
   background:
     radial-gradient(circle at 20% 15%, rgba(0, 229, 255, 0.22), transparent 44%),
     radial-gradient(circle at 80% 18%, rgba(255, 45, 149, 0.2), transparent 46%),
-    repeating-linear-gradient(
-      115deg,
-      rgba(56, 189, 248, 0.04) 0px,
+    repeating-linear-gradient(115deg,
+      rgba(56, 189, 248, 0.04) 0,
       rgba(56, 189, 248, 0.04) 1px,
       transparent 1px,
-      transparent 28px
-    ),
+      transparent 28px),
     linear-gradient(180deg, #050a1e 0%, #0a1432 52%, #09061b 100%);
 }
 
@@ -542,7 +541,7 @@ body.hide-key-hints .uno-card__hotkey {
   font-weight: 800;
   letter-spacing: 0.04em;
   background: rgba(8, 18, 40, 0.9);
-  border: 1px solid currentColor;
+  border: 1px solid currentcolor;
   white-space: nowrap;
 }
 
@@ -562,7 +561,6 @@ body.hide-key-hints .uno-card__hotkey {
 .game-view__my-plate {
   align-self: center;
   justify-self: center;
-  width: fit-content;
   display: inline-flex;
   align-items: center;
   gap: 0.75rem;

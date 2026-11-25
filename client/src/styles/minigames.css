@@ -13,15 +13,27 @@
   overflow: hidden;
   color: var(--text-primary, #f4f7ff);
   background:
-    radial-gradient(ellipse at 50% 0%, rgba(0, 229, 255, 0.16), transparent 55%),
-    radial-gradient(ellipse at 15% 85%, rgba(213, 0, 249, 0.14), transparent 50%),
-    radial-gradient(ellipse at 85% 80%, rgba(255, 200, 61, 0.1), transparent 48%),
+    radial-gradient(
+      ellipse at 50% 0%,
+      rgba(0, 229, 255, 0.16),
+      transparent 55%
+    ),
+    radial-gradient(
+      ellipse at 15% 85%,
+      rgba(213, 0, 249, 0.14),
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse at 85% 80%,
+      rgba(255, 200, 61, 0.1),
+      transparent 48%
+    ),
     linear-gradient(180deg, #060916 0%, #091126 52%, #050814 100%);
-  font-family: var(--font-ui, 'Inter', system-ui, sans-serif);
+  font-family: var(--font-ui, "Inter", system-ui, sans-serif);
 }
 
 .mg-fs-stage::before {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -29,7 +41,10 @@
     radial-gradient(rgba(255, 255, 255, 0.25) 1px, transparent 1px),
     linear-gradient(to right, rgba(0, 229, 255, 0.04) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(0, 229, 255, 0.04) 1px, transparent 1px);
-  background-size: 90px 90px, 64px 64px, 64px 64px;
+  background-size:
+    90px 90px,
+    64px 64px,
+    64px 64px;
   opacity: 0.45;
 }
 
@@ -57,7 +72,7 @@
 }
 
 .mg-fs-brand {
-  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-family: var(--font-display, "Rajdhani", sans-serif);
   font-weight: 900;
   font-size: 1.05rem;
   letter-spacing: 0.14em;
@@ -71,7 +86,7 @@
 
 .mg-fs-title {
   margin: 0;
-  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-family: var(--font-display, "Rajdhani", sans-serif);
   font-weight: 800;
   font-size: 1.2rem;
   letter-spacing: 0.08em;
@@ -135,7 +150,10 @@
   letter-spacing: 0.05em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
 .mg-fs-hud-btn:hover,
@@ -188,7 +206,7 @@
 }
 
 .mg-zone-label {
-  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-family: var(--font-display, "Rajdhani", sans-serif);
   font-size: 0.85rem;
   font-weight: 800;
   letter-spacing: 0.14em;
@@ -251,7 +269,10 @@
     inset 0 0 0 1px rgba(255, 255, 255, 0.85);
   flex-shrink: 0;
   user-select: none;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    border-color 0.18s ease;
 }
 
 .mg-card-el.is-red {
@@ -319,7 +340,11 @@
   border-radius: 11px;
   border: 2px solid rgba(0, 229, 255, 0.75);
   background:
-    radial-gradient(circle at 50% 45%, rgba(0, 229, 255, 0.42), transparent 62%),
+    radial-gradient(
+      circle at 50% 45%,
+      rgba(0, 229, 255, 0.42),
+      transparent 62%
+    ),
     linear-gradient(145deg, #102552 0%, #1c1045 100%);
   box-shadow:
     0 12px 26px rgba(0, 0, 0, 0.55),
@@ -327,7 +352,7 @@
   display: grid;
   place-items: center;
   overflow: hidden;
-  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-family: var(--font-display, "Rajdhani", sans-serif);
   font-weight: 800;
   font-size: 0.8rem;
   letter-spacing: 0.1em;
@@ -361,7 +386,9 @@
 
 .mg-card-back--clickable {
   cursor: pointer;
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
 }
 
 .mg-card-back--clickable:hover,
@@ -398,7 +425,11 @@
   gap: 14px;
   padding: 12px 22px;
   border-radius: 16px;
-  background: linear-gradient(180deg, rgba(16, 29, 61, 0.88), rgba(8, 15, 34, 0.94));
+  background: linear-gradient(
+    180deg,
+    rgba(16, 29, 61, 0.88),
+    rgba(8, 15, 34, 0.94)
+  );
   border: 1px solid rgba(0, 229, 255, 0.32);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
 }
@@ -407,20 +438,27 @@
   padding: 11px 24px;
   border-radius: 999px;
   border: 2px solid #00e5ff;
-  background: linear-gradient(180deg, rgba(0, 229, 255, 0.22), rgba(0, 140, 205, 0.24));
+  background: linear-gradient(
+    180deg,
+    rgba(0, 229, 255, 0.22),
+    rgba(0, 140, 205, 0.24)
+  );
   color: #ffffff;
-  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-family: var(--font-display, "Rajdhani", sans-serif);
   font-weight: 800;
   font-size: 1rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   cursor: pointer;
   box-shadow: 0 0 18px rgba(0, 229, 255, 0.28);
-  transition: transform 0.16s ease, box-shadow 0.16s ease, opacity 0.16s ease;
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease,
+    opacity 0.16s ease;
 }
 
-.mg-neon-btn:hover:not([aria-disabled='true']),
-.mg-neon-btn:focus-visible:not([aria-disabled='true']) {
+.mg-neon-btn:hover:not([aria-disabled="true"]),
+.mg-neon-btn:focus-visible:not([aria-disabled="true"]) {
   transform: translateY(-2px);
   box-shadow: 0 0 26px rgba(0, 229, 255, 0.62);
   outline: none;
@@ -428,24 +466,36 @@
 
 .mg-neon-btn--gold {
   border-color: #ffd166;
-  background: linear-gradient(180deg, rgba(255, 209, 102, 0.26), rgba(217, 130, 15, 0.26));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 209, 102, 0.26),
+    rgba(217, 130, 15, 0.26)
+  );
   color: #fff6d6;
   box-shadow: 0 0 18px rgba(255, 209, 102, 0.3);
 }
 
 .mg-neon-btn--magenta {
   border-color: #ff4da6;
-  background: linear-gradient(180deg, rgba(255, 77, 166, 0.25), rgba(173, 20, 118, 0.26));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 77, 166, 0.25),
+    rgba(173, 20, 118, 0.26)
+  );
   box-shadow: 0 0 18px rgba(255, 77, 166, 0.3);
 }
 
 .mg-neon-btn--violet {
   border-color: #b469ff;
-  background: linear-gradient(180deg, rgba(180, 105, 255, 0.26), rgba(102, 34, 184, 0.26));
+  background: linear-gradient(
+    180deg,
+    rgba(180, 105, 255, 0.26),
+    rgba(102, 34, 184, 0.26)
+  );
   box-shadow: 0 0 18px rgba(180, 105, 255, 0.3);
 }
 
-.mg-neon-btn[aria-disabled='true'] {
+.mg-neon-btn[aria-disabled="true"] {
   opacity: 0.42;
   cursor: not-allowed;
   box-shadow: none;
@@ -460,12 +510,16 @@
   padding: 14px 26px;
   border-radius: 16px;
   border: 2px solid #ffd166;
-  background: linear-gradient(135deg, rgba(46, 30, 9, 0.92), rgba(14, 22, 48, 0.95));
+  background: linear-gradient(
+    135deg,
+    rgba(46, 30, 9, 0.92),
+    rgba(14, 22, 48, 0.95)
+  );
   box-shadow: 0 0 32px rgba(255, 209, 102, 0.32);
 }
 
 .mg-finish-title {
-  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-family: var(--font-display, "Rajdhani", sans-serif);
   font-size: 1.2rem;
   font-weight: 800;
   color: #ffe394;
@@ -485,7 +539,11 @@
   border-radius: 0 0 420px 420px;
   border: 2px solid rgba(0, 229, 255, 0.55);
   border-top: none;
-  background: radial-gradient(ellipse at 50% 0%, rgba(0, 229, 255, 0.2), rgba(7, 22, 46, 0.85) 72%);
+  background: radial-gradient(
+    ellipse at 50% 0%,
+    rgba(0, 229, 255, 0.2),
+    rgba(7, 22, 46, 0.85) 72%
+  );
   box-shadow:
     0 20px 55px rgba(0, 229, 255, 0.18),
     inset 0 -12px 30px rgba(0, 229, 255, 0.14);
@@ -501,7 +559,11 @@
   gap: 24px;
   padding: 16px 34px;
   border-radius: 28px 28px 12px 12px;
-  background: linear-gradient(180deg, rgba(17, 28, 56, 0.92), rgba(8, 14, 30, 0.98));
+  background: linear-gradient(
+    180deg,
+    rgba(17, 28, 56, 0.92),
+    rgba(8, 14, 30, 0.98)
+  );
   border: 1px solid rgba(0, 229, 255, 0.35);
 }
 
@@ -509,7 +571,7 @@
   width: 92px;
   height: 92px;
   border-radius: 50%;
-  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-family: var(--font-display, "Rajdhani", sans-serif);
   font-weight: 900;
   font-size: 0.95rem;
   letter-spacing: 0.08em;
@@ -518,7 +580,9 @@
   cursor: pointer;
   display: grid;
   place-items: center;
-  transition: transform 0.16s ease, box-shadow 0.16s ease;
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
 .mg-bj-orb-btn:hover,
@@ -529,19 +593,31 @@
 
 .mg-bj-orb-btn--hit {
   border: 3px solid #00e5ff;
-  background: radial-gradient(circle, rgba(0, 229, 255, 0.32), rgba(8, 28, 52, 0.92));
+  background: radial-gradient(
+    circle,
+    rgba(0, 229, 255, 0.32),
+    rgba(8, 28, 52, 0.92)
+  );
   box-shadow: 0 0 28px rgba(0, 229, 255, 0.55);
 }
 
 .mg-bj-orb-btn--stand {
   border: 3px solid #ff4da6;
-  background: radial-gradient(circle, rgba(255, 77, 166, 0.32), rgba(42, 10, 38, 0.92));
+  background: radial-gradient(
+    circle,
+    rgba(255, 77, 166, 0.32),
+    rgba(42, 10, 38, 0.92)
+  );
   box-shadow: 0 0 28px rgba(255, 77, 166, 0.55);
 }
 
 .mg-bj-orb-btn--double {
   border: 3px solid #b469ff;
-  background: radial-gradient(circle, rgba(180, 105, 255, 0.34), rgba(28, 12, 58, 0.92));
+  background: radial-gradient(
+    circle,
+    rgba(180, 105, 255, 0.34),
+    rgba(28, 12, 58, 0.92)
+  );
   box-shadow: 0 0 28px rgba(180, 105, 255, 0.55);
 }
 
@@ -552,7 +628,11 @@
   padding: 20px 28px;
   border-radius: 24px;
   border: 2px solid rgba(0, 229, 255, 0.36);
-  background: radial-gradient(ellipse at 50% 40%, rgba(16, 48, 86, 0.72), rgba(7, 17, 38, 0.9));
+  background: radial-gradient(
+    ellipse at 50% 40%,
+    rgba(16, 48, 86, 0.72),
+    rgba(7, 17, 38, 0.9)
+  );
   box-shadow:
     0 22px 48px rgba(0, 0, 0, 0.6),
     inset 0 0 36px rgba(0, 229, 255, 0.1);
@@ -623,7 +703,11 @@
   padding: 26px 32px;
   border-radius: 36px;
   border: 3px solid rgba(112, 232, 255, 0.65);
-  background: radial-gradient(ellipse at 50% 50%, rgba(16, 44, 78, 0.78), rgba(7, 16, 36, 0.94));
+  background: radial-gradient(
+    ellipse at 50% 50%,
+    rgba(16, 44, 78, 0.78),
+    rgba(7, 16, 36, 0.94)
+  );
   box-shadow:
     0 0 38px rgba(0, 229, 255, 0.2),
     inset 0 0 34px rgba(0, 229, 255, 0.14);
@@ -657,7 +741,11 @@
   padding: 28px 36px;
   border-radius: 180px;
   border: 4px solid rgba(255, 209, 102, 0.68);
-  background: radial-gradient(ellipse at 50% 50%, rgba(28, 35, 58, 0.92), rgba(9, 13, 26, 0.96));
+  background: radial-gradient(
+    ellipse at 50% 50%,
+    rgba(28, 35, 58, 0.92),
+    rgba(9, 13, 26, 0.96)
+  );
   box-shadow:
     0 0 42px rgba(255, 209, 102, 0.22),
     inset 0 0 36px rgba(0, 229, 255, 0.12);
@@ -682,9 +770,13 @@
   padding: 8px 22px;
   border-radius: 999px;
   border: 1px solid #ffd166;
-  background: linear-gradient(135deg, rgba(255, 209, 102, 0.24), rgba(184, 114, 14, 0.22));
+  background: linear-gradient(
+    135deg,
+    rgba(255, 209, 102, 0.24),
+    rgba(184, 114, 14, 0.22)
+  );
   color: #ffea9f;
-  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-family: var(--font-display, "Rajdhani", sans-serif);
   font-weight: 900;
   font-size: 1.1rem;
   letter-spacing: 0.08em;
@@ -700,7 +792,7 @@
   font-weight: 700;
 }
 
-.mg-poker-slider-row input[type='range'] {
+.mg-poker-slider-row input[type="range"] {
   accent-color: #00e5ff;
   width: 170px;
   cursor: pointer;
@@ -735,7 +827,7 @@
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-family: var(--font-display, "Rajdhani", sans-serif);
   font-weight: 800;
   font-size: 1.15rem;
   letter-spacing: 0.08em;
@@ -807,11 +899,17 @@
   text-align: center;
   cursor: pointer;
   user-select: none;
-  background: linear-gradient(170deg, rgba(16, 28, 56, 0.96), rgba(7, 13, 28, 0.98));
+  background: linear-gradient(
+    170deg,
+    rgba(16, 28, 56, 0.96),
+    rgba(7, 13, 28, 0.98)
+  );
   color: #f8fafc;
   border: 2px solid #00e5ff;
   box-shadow: 0 12px 26px rgba(0, 0, 0, 0.55);
-  transition: transform 0.16s ease, box-shadow 0.16s ease;
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
 .mg-mille-card--distance {
@@ -847,7 +945,7 @@
 }
 
 .mg-mille-card-title {
-  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-family: var(--font-display, "Rajdhani", sans-serif);
   font-weight: 800;
   font-size: 0.98rem;
   line-height: 1.15;
@@ -885,7 +983,11 @@
   border-radius: 22px;
   border: 2px solid rgba(255, 209, 102, 0.75);
   background:
-    radial-gradient(ellipse at 50% 0%, rgba(255, 209, 102, 0.22), transparent 55%),
+    radial-gradient(
+      ellipse at 50% 0%,
+      rgba(255, 209, 102, 0.22),
+      transparent 55%
+    ),
     linear-gradient(165deg, rgba(16, 26, 54, 0.98), rgba(7, 12, 28, 0.99));
   box-shadow:
     0 24px 64px rgba(0, 0, 0, 0.78),
@@ -900,7 +1002,11 @@
 .mg-victory-card.is-defeat {
   border-color: rgba(0, 229, 255, 0.55);
   background:
-    radial-gradient(ellipse at 50% 0%, rgba(0, 229, 255, 0.16), transparent 55%),
+    radial-gradient(
+      ellipse at 50% 0%,
+      rgba(0, 229, 255, 0.16),
+      transparent 55%
+    ),
     linear-gradient(165deg, rgba(16, 26, 54, 0.98), rgba(7, 12, 28, 0.99));
   box-shadow:
     0 24px 64px rgba(0, 0, 0, 0.78),
@@ -908,7 +1014,7 @@
 }
 
 .mg-victory-badge {
-  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-family: var(--font-display, "Rajdhani", sans-serif);
   font-size: 2rem;
   font-weight: 900;
   letter-spacing: 0.1em;
@@ -956,7 +1062,7 @@
 }
 
 .mg-reward-tile strong {
-  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-family: var(--font-display, "Rajdhani", sans-serif);
   font-size: 1.08rem;
   font-weight: 800;
   color: #ffffff;
@@ -1021,13 +1127,21 @@
 }
 
 /* ---------- Contenders Bar (Rank, Title, Avatar, Frame) & Arena Theme ---------- */
-.mg-fs-stage[data-arena-theme='theme_tokyo_rain'] {
+.mg-fs-stage[data-arena-theme="theme_tokyo_rain"] {
   background:
-    radial-gradient(circle at 18% 12%, rgba(0, 229, 255, 0.22), transparent 44%),
-    radial-gradient(circle at 82% 16%, rgba(255, 45, 149, 0.2), transparent 46%),
+    radial-gradient(
+      circle at 18% 12%,
+      rgba(0, 229, 255, 0.22),
+      transparent 44%
+    ),
+    radial-gradient(
+      circle at 82% 16%,
+      rgba(255, 45, 149, 0.2),
+      transparent 46%
+    ),
     repeating-linear-gradient(
       115deg,
-      rgba(56, 189, 248, 0.04) 0px,
+      rgba(56, 189, 248, 0.04) 0,
       rgba(56, 189, 248, 0.04) 1px,
       transparent 1px,
       transparent 28px
@@ -1105,7 +1219,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-family: var(--font-display, "Rajdhani", sans-serif);
   font-weight: 800;
   font-size: 0.9rem;
   color: #f8fafc;
