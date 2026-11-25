@@ -1,4 +1,4 @@
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 WORKDIR /app
 RUN apk add --no-cache curl
 
@@ -27,7 +27,7 @@ COPY server ./server
 RUN npx tsc -b -f shared server
 
 # ---------- Production ----------
-FROM node:20-alpine AS production
+FROM node:24-alpine AS production
 WORKDIR /app
 ENV NODE_ENV=production
 RUN apk add --no-cache curl

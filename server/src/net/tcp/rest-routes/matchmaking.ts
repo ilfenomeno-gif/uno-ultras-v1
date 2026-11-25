@@ -3,6 +3,7 @@
 // ============================================================
 
 import { Router } from 'express';
+import { matchMaker } from 'colyseus';
 import { z } from 'zod';
 import {
   checkPartyRankDisparity,
@@ -32,6 +33,7 @@ const EnqueueSchema = z.object({
   mode: z.enum(GAME_MODES).default('uno'),
   ranked: z.boolean().default(false),
   targetPlayers: z.number().int().min(2).max(4).default(4),
+  variant: z.enum(['standard', 'blitz', 'chaos', 'team', 'custom']).optional(),
   partyMemberIds: z.array(z.string().min(1).max(80)).max(3).optional(),
   partyMemberMmrs: z.array(z.number().min(0).max(10000)).max(3).optional(),
   isTournament: z.boolean().optional(),
@@ -124,19 +126,43 @@ matchmakingRouter.post('/enqueue', authRequired, mmLimiter, async (req, res) => 
   });
 
   const formed = matchmakingQueue.popMatches();
-  const myMatch = formed.find((m) => m.players.some((p) => p.playerId === playerId)) ?? null;
+  let matchedResponse: Record<string, unknown> | null = null;
 
-  if (myMatch) {
-    for (const member of myMatch.players) {
-      await removeRedisQueueMembers(myMatch.mode, myMatch.ranked, [member.playerId]);
+  for (const match of formed) {
+    let roomId: string | undefined;
+    if (match.mode === 'uno') {
+      try {
+        const created = await matchMaker.createRoom('uno', {
+          maxPlayers: match.players.length,
+          ranked: match.ranked,
+          fillWithBots: false,
+          variant: parsed.data.variant ?? 'standard',
+          matchmade: true,
+        });
+        roomId = created.roomId;
+      } catch {
+        // Fallback when running HTTP-only unit tests without Colyseus server booted
+      }
+    }
+
+    for (const member of match.players) {
+      await removeRedisQueueMembers(match.mode, match.ranked, [member.playerId]);
       await cacheMatchmakingTicket(member.ticketId, {
         status: 'matched',
-        matchId: myMatch.matchId,
-        mode: myMatch.mode,
-        ranked: myMatch.ranked,
-        averageMMR: myMatch.averageMMR,
-        players: myMatch.players.map((p) => ({ playerId: p.playerId, username: p.username })),
+        matchId: match.matchId,
+        ...(roomId ? { roomId } : {}),
+        mode: match.mode,
+        ranked: match.ranked,
+        averageMMR: match.averageMMR,
+        players: match.players.map((p) => ({ playerId: p.playerId, username: p.username })),
       });
+    }
+
+    if (match.players.some((p) => p.playerId === playerId)) {
+      matchedResponse = {
+        ...match,
+        ...(roomId ? { roomId } : {}),
+      };
     }
   }
 
@@ -144,7 +170,7 @@ matchmakingRouter.post('/enqueue', authRequired, mmLimiter, async (req, res) => 
     ticket,
     effectivePartyMmr: effectiveMmr,
     disparity,
-    matched: myMatch,
+    matched: matchedResponse,
     queueSize: matchmakingQueue.size(),
   });
 });

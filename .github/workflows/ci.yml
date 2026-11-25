@@ -34,5 +34,11 @@ jobs:
       - name: Run unit & integration tests (shared, server, client)
         run: npm run test
 
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run 2-context matchmaking Playwright E2E test
+        run: npm run test:e2e
+
       - name: Production dependency audit (non-blocking summary)
         run: npm audit --omit=dev --audit-level=high || true

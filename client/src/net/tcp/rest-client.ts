@@ -428,23 +428,28 @@ export async function enqueueMatchmaking(payload: {
   mode: string;
   ranked: boolean;
   targetPlayers: number;
+  variant?: string;
   partyMemberIds?: readonly string[];
   partyMemberMmrs?: readonly number[];
   isTournament?: boolean;
 }): Promise<{
   ticket: { ticketId: string };
   effectivePartyMmr?: number;
-  matched: Record<string, unknown> | null;
+  matched: ({ matchId: string; mode: string; ranked: boolean; roomId?: string } & Record<string, unknown>) | null;
 }> {
   return postJson('/matchmaking/enqueue', payload, true);
 }
 
-export async function fetchMatchmakingStatus(ticketId: string): Promise<Record<string, unknown>> {
+export async function fetchMatchmakingStatus(
+  ticketId: string,
+): Promise<{ status?: string; roomId?: string; matchId?: string } & Record<string, unknown>> {
   return requestJson(`/matchmaking/status/${encodeURIComponent(ticketId)}`, {
     method: 'GET',
     headers: authHeaders(),
   });
 }
+
+export const getMatchmakingStatus = fetchMatchmakingStatus;
 
 export async function cancelMatchmaking(mode: string, ranked: boolean): Promise<{ cancelled: boolean }> {
   return requestJson(

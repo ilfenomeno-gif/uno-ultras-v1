@@ -31,7 +31,12 @@ import { renderRouteTabView } from './ui/navigation/tab-controller.js';
 import { openMiniGameSandboxModal } from './ui/minigames/sandbox-modal.js';
 import { mountGameView } from './game-view/table.js';
 import { initClientEnvironment } from './core/bootstrap.js';
-import { fetchInventory } from './net/tcp/rest-client.js';
+import {
+  cancelMatchmaking,
+  enqueueMatchmaking,
+  fetchInventory,
+  getMatchmakingStatus,
+} from './net/tcp/rest-client.js';
 import { getEconomySnapshot, setEconomySnapshot } from './state/inventory-store.js';
 import { getProfile, isAuthenticated } from './state/profile-store.js';
 import { colyseus, enterMatch, joinMatchById, signOut } from './net/connection-manager.js';
@@ -106,6 +111,47 @@ function bootstrap(): void {
       return;
     }
     const maxPlayers = cfg.variant === 'team' ? 4 : cfg.playerCount === 1 ? 2 : cfg.playerCount;
+    if (cfg.playerCount >= 2) {
+      const queued = await enqueueMatchmaking({
+        mode: 'uno',
+        ranked: cfg.ranked,
+        targetPlayers: maxPlayers,
+        ...(cfg.variant !== undefined ? { variant: cfg.variant } : {}),
+      });
+      const immediateRoomId =
+        typeof queued.matched?.roomId === 'string' ? queued.matched.roomId : undefined;
+      if (immediateRoomId) {
+        await joinMatchById(immediateRoomId);
+        router.navigate('game');
+        return;
+      }
+
+      let matchedRoomId: string | undefined;
+      const deadline = Date.now() + 3500;
+      while (Date.now() < deadline) {
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 250);
+        });
+        try {
+          const statusRes = await getMatchmakingStatus(queued.ticket.ticketId);
+          if (statusRes.status === 'matched' && typeof statusRes.roomId === 'string') {
+            matchedRoomId = statusRes.roomId;
+            break;
+          }
+        } catch {
+          // Ignore transient poll errors while waiting for opponents
+        }
+      }
+
+      if (matchedRoomId) {
+        await joinMatchById(matchedRoomId);
+        router.navigate('game');
+        return;
+      }
+
+      await cancelMatchmaking('uno', cfg.ranked).catch(() => undefined);
+    }
+
     const room = await enterMatch({
       mode: cfg.mode,
       maxPlayers,

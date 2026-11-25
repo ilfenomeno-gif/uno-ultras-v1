@@ -4,6 +4,16 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
+## Sessione 2026-11-25 (Parte 12) — Ripristino Node 24 LTS, Matchmaking Online Reale & Test Playwright E2E a 2 Browser
+
+- **Obiettivo**: ripristinare il runtime LTS supportato (**Node 24**), collegare end-to-end la coda REST di matchmaking (`POST /api/matchmaking/enqueue`) alla creazione e ingresso nella stessa stanza Colyseus tra giocatori reali, e aggiungere un test **Playwright E2E a 2 contesti browser** integrato in `.github/workflows/ci.yml`.
+- **Stato Lavori**:
+  - `[x]` Ripristinati `node >=24.0.0` / `npm >=11.0.0` in `package.json`, `.nvmrc` (`24`), `docker/server/Dockerfile`, `docker/client/Dockerfile` (`node:24-alpine`) e `README.md`.
+  - `[x]` Collegamento Matchmaking Online Reale: `UnoRoom` ora supporta `matchmade: true` (stanza privata `setPrivate(true)` per ingressi su `roomId`), `POST /api/matchmaking/enqueue` (`server/src/net/tcp/rest-routes/matchmaking.ts`) invoca `matchMaker.createRoom('uno', { fillWithBots: false, matchmade: true, ... })` salvando `roomId` nel ticket Redis/memoria e nella risposta, e `client/src/main.ts` (`handleLaunch`) mette in coda i giocatori `>=2`, effettua polling su `/api/matchmaking/status/:ticketId` e collega entrambi via `joinMatchById(roomId)` prima del fallback bot dopo 3.5s di attesa senza avversari umani.
+  - `[x]` Aggiunta suite Playwright (`playwright.config.ts`, `e2e/matchmaking-e2e.spec.ts`, script `npm run test:e2e`) che verifica due browser distinti registrarsi, entrare nella stessa stanza UNO Blitz `1v1`, giocare carte reali e completare la liquidazione (`ended-overlay` + `mcp-rewards`), collegata a `.github/workflows/ci.yml`.
+
+---
+
 ## Sessione 2026-11-25 (Parte 11) — Pulizia Dipendenze (`three`), Allineamento Node `>=20`, Rimozione `:443` senza TLS & UDP Telemetry Opt-In/Anti-Flood
 
 - **Obiettivo**: chiudere le segnalazioni residue su dipendenze inutilizzate, requisiti Node/Docker troppo restrittivi, porta HTTPS non terminata da TLS e protezione anti-flood della telemetria UDP.

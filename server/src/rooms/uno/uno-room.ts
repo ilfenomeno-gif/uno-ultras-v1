@@ -52,6 +52,7 @@ export interface UnoRoomCreateOptions {
   ranked?: boolean;
   variant?: MatchVariant;
   customConfig?: CustomMatchConfig;
+  matchmade?: boolean;
 }
 
 export interface UnoRoomJoinOptions {
@@ -141,6 +142,9 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
     this.fillWithBots = options.fillWithBots ?? true;
     this.botDifficulty = options.botDifficulty ?? 'normal';
     this.isRanked = options.ranked ?? false;
+    if (options.matchmade) {
+      void this.setPrivate(true);
+    }
 
     const basePreset = VARIANT_PRESETS[options.variant ?? 'standard'] ?? VARIANT_PRESETS.standard;
     const candidate = options.customConfig ?? basePreset;
