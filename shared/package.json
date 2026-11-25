@@ -23,7 +23,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@colyseus/schema": "^3.0.0",
+    "@colyseus/schema": "^5.0.50",
     "zod": "^3.23.8"
   },
   "devDependencies": {
