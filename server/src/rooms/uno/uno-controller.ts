@@ -25,6 +25,14 @@ export interface UnoParticipant {
   username: string;
   isBot: boolean;
   aiProfile?: AIProfile;
+  avatarId?: string;
+  frameId?: string;
+  cardBackId?: string;
+  titleId?: string;
+  rankTier?: string;
+  mmr?: number;
+  titleText?: string;
+  titleColor?: string;
 }
 
 export class UnoController {

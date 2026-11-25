@@ -33,7 +33,13 @@ import {
 import { formatCardSpeechLabel, formatColorLabel } from './card-format.js';
 import { renderHand } from './hand.js';
 import { renderDiscardPile } from './discard-pile.js';
-import { renderOpponents, type OpponentSummary } from './opponent-panel.js';
+import { renderMyPlate, renderOpponents, type OpponentSummary } from './opponent-panel.js';
+import { fetchInventory } from '../net/tcp/rest-client.js';
+import {
+  getEconomySnapshot,
+  setEconomySnapshot,
+  subscribeEconomy,
+} from '../state/inventory-store.js';
 import { renderActionHints } from './action-hints.js';
 
 export interface GameViewOptions {
@@ -82,6 +88,15 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
 
   const root = document.createElement('section');
   root.className = 'game-view';
+  const applyArenaTheme = (): void => {
+    const themeId = getEconomySnapshot().loadout.theme;
+    if (themeId && themeId !== 'theme_default') {
+      root.dataset['arenaTheme'] = themeId;
+    } else {
+      delete root.dataset['arenaTheme'];
+    }
+  };
+  applyArenaTheme();
   root.setAttribute('aria-label', 'Tavolo UNO ULTRA');
   root.innerHTML = `
     <div class="game-view__header">
@@ -94,6 +109,7 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
       <div class="game-view__discard" data-role="discard"></div>
     </div>
     <div class="game-view__hints" data-role="hints"></div>
+    <div class="game-view__my-plate" data-role="my-plate"></div>
     <div class="game-view__hand" data-role="hand" role="region" aria-label="La tua mano di carte"></div>
 
     <div class="game-overlay" data-role="lobby-overlay" hidden>
@@ -138,6 +154,7 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
   const statusEl = root.querySelector<HTMLElement>('[data-role="status"]')!;
   const roomIdEl = root.querySelector<HTMLElement>('[data-role="room-id"]')!;
   const opponentsEl = root.querySelector<HTMLElement>('[data-role="opponents"]')!;
+  const myPlateEl = root.querySelector<HTMLElement>('[data-role="my-plate"]')!;
   const discardEl = root.querySelector<HTMLElement>('[data-role="discard"]')!;
   const hintsEl = root.querySelector<HTMLElement>('[data-role="hints"]')!;
   const handEl = root.querySelector<HTMLElement>('[data-role="hand"]')!;
@@ -413,8 +430,43 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
       statusEl.textContent = `Turno di ${turnName}`;
     }
 
-    renderOpponents(opponentsEl, players, myId);
-    renderDiscardPile(discardEl, topCard, state.activeColor, state.direction);
+    const loadout = getEconomySnapshot().loadout;
+    const myPlayerState = state.players.get(myId);
+    const enrichedPlayers: OpponentSummary[] = players.map((p) => {
+      const ps = state.players.get(p.id);
+      if (!ps) return p;
+      const isMe = p.id === myId;
+      return {
+        ...p,
+        avatarId: isMe ? (loadout.avatar || ps.avatarId) : ps.avatarId,
+        frameId: isMe ? (loadout.frame || ps.frameId) : ps.frameId,
+        titleId: isMe ? (loadout.title || ps.titleId) : ps.titleId,
+        titleText: ps.titleText,
+        titleColor: ps.titleColor,
+        rankTier: ps.rankTier,
+        mmr: ps.mmr,
+      };
+    });
+    const activeCardBack =
+      loadout.cardStyle || myPlayerState?.cardBackId || 'back_default';
+    renderOpponents(opponentsEl, enrichedPlayers, myId);
+    renderDiscardPile(
+      discardEl,
+      topCard,
+      state.activeColor,
+      state.direction,
+      activeCardBack
+    );
+    renderMyPlate(myPlateEl, {
+      username: myPlayerState?.username ?? 'Tu',
+      avatarId: loadout.avatar || myPlayerState?.avatarId || 'avatar_default',
+      frameId: loadout.frame || myPlayerState?.frameId || 'frame_default',
+      titleId: loadout.title || myPlayerState?.titleId || '',
+      titleText: myPlayerState?.titleText ?? '',
+      titleColor: myPlayerState?.titleColor ?? '',
+      rankTier: myPlayerState?.rankTier ?? 'Bronze I',
+      mmr: myPlayerState?.mmr ?? 1000,
+    });
 
     displayedHand = renderHand(
       handEl,
@@ -692,11 +744,37 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
     }, 2200);
   });
 
+  const unsubEconomy = subscribeEconomy(() => {
+    applyArenaTheme();
+    render();
+  });
+  void fetchInventory()
+    .then((inv) => {
+      const cur = getEconomySnapshot();
+      setEconomySnapshot({
+        ...cur,
+        items: inv.items.map((r) => ({
+          itemId: r.item_id,
+          category: r.category,
+          quantity: r.quantity,
+        })),
+        loadout: {
+          ...cur.loadout,
+          avatar: inv.loadout.avatar,
+          frame: inv.loadout.frame,
+          cardStyle: inv.loadout.cardStyle,
+          title: inv.loadout.title,
+        },
+      });
+    })
+    .catch(() => undefined);
+
   render();
 
   return () => {
     window.removeEventListener('keydown', onTableKeyDown);
     unsubSettings();
+    unsubEconomy();
     purgeOnClose();
     room.onStateChange.remove(stateListener);
     offHand();

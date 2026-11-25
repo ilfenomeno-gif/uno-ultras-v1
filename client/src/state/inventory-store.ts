@@ -34,7 +34,10 @@ const DEFAULT_SNAPSHOT: EconomyClientSnapshot = {
     frame: 'frame_default',
     cardStyle: 'back_default',
     title: 't1',
-    theme: 'theme_default',
+    theme:
+      typeof window !== 'undefined'
+        ? (window.localStorage.getItem('uno_ultra_equipped_theme') ?? 'theme_default')
+        : 'theme_default',
   },
 };
 

@@ -9,6 +9,7 @@ import {
   formatScoreSummary,
   formatStandardCardLabel,
   pickMiniGameBotNames,
+  pickMiniGameBotProfiles,
   type MiniGameActionLike,
 } from '../src/ui/minigames/minigame-helpers.js';
 
@@ -119,5 +120,15 @@ describe('7 Mini-Games Full-Screen UI Helpers', () => {
     expect(bots).toHaveLength(3);
     expect(new Set(bots).size).toBe(3);
     expect(bots[0]).not.toMatch(/^Bot_/);
+
+    const botProfiles = pickMiniGameBotProfiles(3, 42, 'blackjack');
+    expect(botProfiles).toHaveLength(3);
+    for (const bot of botProfiles) {
+      expect(bot.rankTier.length).toBeGreaterThan(2);
+      expect(bot.titleText.length).toBeGreaterThan(1);
+      expect(bot.rankColor).toMatch(/^#/);
+      expect(bot.avatarId).toMatch(/^avatar_/);
+      expect(bot.frameId).toMatch(/^frame_/);
+    }
   });
 });

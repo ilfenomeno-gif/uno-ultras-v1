@@ -4,6 +4,18 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
+## Sessione 2026-11-25 (Parte 7) — Identità Bot (Nome, Rank, Titolo), Loadout Armadietto in Partita & Test Visivi Chrome
+
+- **Obiettivo**: mostrare nome, rank e titolo di tutti i bot in partita (UNO + 7 Mini-Giochi), collegare live l'**Armadietto** alle partite rendendo visibili ogni cosmetico equipaggiato (`avatar`, `frame`, `cardStyle`, `title`, `theme`), ed eseguire test manuali visivi in browser reale Chrome per verificare il collegamento end-to-end.
+- **Stato Lavori**:
+  - `[x]` Schema `PlayerState` in `shared/src/schemas/player-state.ts` esteso con `rankTier`, `mmr`, `titleText`, `titleColor`; `UnoController` (`server/src/rooms/uno/uno-controller.ts`) e `UnoRoom` (`server/src/rooms/uno/uno-room.ts`) aggiornati per sincronizzare loadout + `getPlayerPlaylistRank` dei giocatori reali e assegnare a ogni bot avatar, cornice, dorso carte, grado per MMR e titolo di prestigio (`pickPrestigiousTitleForMMR`).
+  - `[x]` Bootstrap client & Armadietto (`client/src/main.ts`, `client/src/state/inventory-store.ts`, `client/src/ui/navigation/tab-locker.ts`): idratazione automatica inventario/loadout all'avvio e al login, risoluzione nomi titoli legacy/catalogo (`resolveDisplayName`), persistenza `localStorage` del tema tavolo equipaggiato (`uno_ultra_equipped_theme`).
+  - `[x]` Tavolo UNO (`client/src/game-view/opponent-panel.ts`, `discard-pile.ts`, `table.ts`, `client/src/styles/game.css`): pannelli avversari/bot con avatar incorniciato, tag `BOT`, badge rank colorato e targhetta titolo; plancia locale `.game-view__my-plate`; mazzo `MAZZO` con SVG del dorso carte equipaggiato e sfondo `[data-arena-theme="theme_tokyo_rain"]`.
+  - `[x]` Tavoli 7 Mini-Giochi (`client/src/ui/minigames/minigame-helpers.ts`, `sandbox-modal.ts`, `client/src/styles/minigames.css`, `client/tests/minigames-ui.test.ts`): barra contendenti `.mg-contenders-bar` per giocatore e bot (nome, avatar, cornice, grado, titolo), dorso carte equipaggiato in `createCardBackEl` e tema arena attivo.
+  - `[x]` Verifica visiva manuale Chrome headless (`1440×900`) su `remilk12` con `avatar_cyber_dragon`, `frame_ssl_prism`, `back_obsidian_holo`, titolo `t9` e `theme_tokyo_rain` attraverso Armadietto, partita UNO 4 giocatori e tavolo Scala 40, confermando zero sovrapposizioni/clipping.
+
+---
+
 ## Sessione 2026-11-25 (Parte 6) — Gradi Indipendenti per Modalità × Giocatori (`1v1` / `3G` / `4G`), Fix Amici/Inviti & Avvio Partita
 
 - **Obiettivo**: separare completamente Rank e MMR per ogni singola combinazione `Modalità × Numero Giocatori` (`1v1`, `3 Giocatori`, `4 Giocatori`) su tutte le `8` modalità, risolvere gli errori di aggiunta amici/inviti in stanza e l'errore `"Impossibile avviare la partita. Riprova."`, e riavviare lo stack auto-ricaricante sempre attivo.

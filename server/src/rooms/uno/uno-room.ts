@@ -11,8 +11,12 @@
 
 import type { Client, Delayed } from 'colyseus';
 import {
+  CATALOG_BY_ID,
   decideAction,
+  getRankFromMMR,
   getThinkDelayMs,
+  LEGACY_TITLES_BY_ID,
+  pickPrestigiousTitleForMMR,
   PlayerState,
   REALISTIC_BOT_PROFILES,
   TCP_CHANNELS,
@@ -29,6 +33,7 @@ import { verifyAccessToken } from '../../auth/jwt-service.js';
 import { adviseBotMove } from '../../ai/gemini-bot-advisor.js';
 import { featureFlags } from '../../config/feature-flags.js';
 import { getEquippedLoadout } from '../../persistence/postgres/repositories/inventory.js';
+import { getPlayerPlaylistRank } from '../../persistence/postgres/repositories/playlist-ranks.js';
 import { RoomActionThrottle } from '../../security/anti-cheat.js';
 import { settleFinishedMatchWithReceipts } from '../../services/match-settlement.js';
 import { BaseRoom } from '../base/base-room.js';
@@ -54,6 +59,43 @@ export interface UnoRoomJoinOptions {
 
 const BOT_PROFILES_ROTATION: readonly AIProfile[] = ['AGGR', 'CONS', 'STRAT'];
 const RECONNECT_WINDOW_SECONDS = 30;
+const BOT_AVATAR_POOL = [
+  'avatar_default',
+  'avatar_neon_fox',
+  'avatar_cyber_dragon',
+  'avatar_chrono_ace',
+] as const;
+const BOT_CARDBACK_POOL = ['back_default', 'back_arcade_grid', 'back_obsidian_holo'] as const;
+
+interface PlayerVisualMeta {
+  avatarId: string;
+  frameId: string;
+  cardBackId: string;
+  titleId: string;
+  rankTier: string;
+  mmr: number;
+  titleText: string;
+  titleColor: string;
+}
+
+function resolveServerTitleMeta(titleId: string): { text: string; color: string } {
+  if (!titleId) return { text: '', color: '' };
+  const legacy = LEGACY_TITLES_BY_ID[titleId];
+  if (legacy) return { text: legacy.name, color: legacy.color };
+  const catalogItem = CATALOG_BY_ID[titleId];
+  if (catalogItem) {
+    const color =
+      catalogItem.rarity === 'mythic'
+        ? '#ff5ef7'
+        : catalogItem.rarity === 'legendary'
+          ? '#ffd166'
+          : catalogItem.rarity === 'epic'
+            ? '#c084fc'
+            : '#38bdf8';
+    return { text: catalogItem.name, color };
+  }
+  return { text: titleId, color: '#94a3b8' };
+}
 
 export class UnoRoom extends BaseRoom<UnoRoomState> {
   private readonly controller = new UnoController();
@@ -62,6 +104,7 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
   private readonly lobbyParticipants = new Map<string, UnoParticipant>();
   private readonly spectators = new Set<string>();
   private readonly rematchVotes = new Set<string>();
+  private readonly participantVisuals = new Map<string, PlayerVisualMeta>();
 
   private targetPlayers = 4;
   private fillWithBots = true;
@@ -162,14 +205,35 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
     ps.isConnected = true;
     this.state.players.set(playerId, ps);
 
-    void getEquippedLoadout(playerId)
-      .then((loadout) => {
+    void Promise.all([
+      getEquippedLoadout(playerId),
+      getPlayerPlaylistRank(playerId, 'uno', this.targetPlayers).catch(() => null),
+    ])
+      .then(([loadout, rankEntry]) => {
+        const titleMeta = resolveServerTitleMeta(loadout.title);
+        const mmr = rankEntry?.mmr ?? 1000;
+        const rankTier = rankEntry?.rankTier ?? getRankFromMMR(mmr);
+        const meta: PlayerVisualMeta = {
+          avatarId: loadout.avatar,
+          frameId: loadout.frame,
+          cardBackId: loadout.cardStyle,
+          titleId: loadout.title,
+          rankTier,
+          mmr,
+          titleText: titleMeta.text,
+          titleColor: titleMeta.color,
+        };
+        this.participantVisuals.set(playerId, meta);
         const livePs = this.state.players.get(playerId);
         if (!livePs) return;
-        livePs.avatarId = loadout.avatar;
-        livePs.frameId = loadout.frame;
-        livePs.cardBackId = loadout.cardStyle;
-        livePs.titleId = loadout.title;
+        livePs.avatarId = meta.avatarId;
+        livePs.frameId = meta.frameId;
+        livePs.cardBackId = meta.cardBackId;
+        livePs.titleId = meta.titleId;
+        livePs.rankTier = meta.rankTier;
+        livePs.mmr = meta.mmr;
+        livePs.titleText = meta.titleText;
+        livePs.titleColor = meta.titleColor;
       })
       .catch(() => {
         // Fallback default cosmetics for guest / DB-offline tests
@@ -363,6 +427,21 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
 
   // ── Match flow ────────────────────────────────────────────
 
+  private applyVisualsToPlayerStates(): void {
+    for (const [id, meta] of this.participantVisuals) {
+      const ps = this.state.players.get(id);
+      if (!ps) continue;
+      ps.avatarId = meta.avatarId;
+      ps.frameId = meta.frameId;
+      ps.cardBackId = meta.cardBackId;
+      ps.titleId = meta.titleId;
+      ps.rankTier = meta.rankTier;
+      ps.mmr = meta.mmr;
+      ps.titleText = meta.titleText;
+      ps.titleColor = meta.titleColor;
+    }
+  }
+
   private startUnoMatch(): void {
     const participants: UnoParticipant[] = [...this.lobbyParticipants.values()];
 
@@ -379,8 +458,32 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
             ? botCandidate.name
             : `UNO_BOT_${botIdx}`;
         usedNames.add(botName.toLowerCase());
+        const botId = `bot_${botIdx}`;
+        const botMmr = botCandidate?.baseMmr ?? 1100 + botIdx * 95;
+        const botRankTier = getRankFromMMR(botMmr);
+        const botTitleDef = pickPrestigiousTitleForMMR(botMmr, 'uno', startBotOffset + botIdx);
+        const botAvatar =
+          BOT_AVATAR_POOL[(botIdx + startBotOffset) % BOT_AVATAR_POOL.length] ?? 'avatar_default';
+        const botFrame =
+          botMmr >= 1950
+            ? 'frame_ssl_prism'
+            : botMmr >= 1400
+              ? 'frame_gold_pulse'
+              : 'frame_default';
+        const botCardBack =
+          BOT_CARDBACK_POOL[(botIdx + startBotOffset) % BOT_CARDBACK_POOL.length] ?? 'back_default';
+        this.participantVisuals.set(botId, {
+          avatarId: botAvatar,
+          frameId: botFrame,
+          cardBackId: botCardBack,
+          titleId: botTitleDef.id,
+          rankTier: botRankTier,
+          mmr: botMmr,
+          titleText: botTitleDef.name,
+          titleColor: botTitleDef.color,
+        });
         participants.push({
-          id: `bot_${botIdx}`,
+          id: botId,
           username: botName,
           isBot: true,
           aiProfile: profile,
@@ -403,6 +506,7 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
     this.replayEvents.length = 0;
     this.controller.initMatch(this.roomId, participants, seed, this.matchConfig.rules);
     this.controller.syncToRoomState(this.state);
+    this.applyVisualsToPlayerStates();
     if (this.matchConfig.teamPlay && participants.length === 4) {
       participants.forEach((p, idx) => {
         const ps = this.state.players.get(p.id);

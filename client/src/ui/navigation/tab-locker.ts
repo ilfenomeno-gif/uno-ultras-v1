@@ -118,7 +118,7 @@ export function createLockerView(): HTMLElement {
   ): Promise<void> => {
     if (busyAction) return;
     busyAction = true;
-    const displayName = CATALOG_BY_ID[itemId]?.name ?? itemId;
+    const displayName = resolveDisplayName(itemId);
     paint();
 
     try {
@@ -130,6 +130,11 @@ export function createLockerView(): HTMLElement {
         });
         if (typeof document !== 'undefined' && document.body) {
           document.body.dataset['arenaTheme'] = itemId;
+          try {
+            window.localStorage.setItem('uno_ultra_equipped_theme', itemId);
+          } catch {
+            // Storage non disponibile
+          }
         }
       } else {
         try {

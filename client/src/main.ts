@@ -31,6 +31,8 @@ import { renderRouteTabView } from './ui/navigation/tab-controller.js';
 import { openMiniGameSandboxModal } from './ui/minigames/sandbox-modal.js';
 import { mountGameView } from './game-view/table.js';
 import { initClientEnvironment } from './core/bootstrap.js';
+import { fetchInventory } from './net/tcp/rest-client.js';
+import { getEconomySnapshot, setEconomySnapshot } from './state/inventory-store.js';
 import { getProfile, isAuthenticated } from './state/profile-store.js';
 import { colyseus, enterMatch, joinMatchById, signOut } from './net/connection-manager.js';
 
@@ -41,6 +43,36 @@ function bootstrap(): void {
 
   initClientEnvironment();
   applySettingsToDocument();
+
+  const hydrateEquippedInventory = async (): Promise<void> => {
+    if (!isAuthenticated()) return;
+    try {
+      const inv = await fetchInventory();
+      const cur = getEconomySnapshot();
+      const activeTheme = cur.loadout.theme;
+      if (activeTheme && activeTheme !== 'theme_default') {
+        document.body.dataset['arenaTheme'] = activeTheme;
+      }
+      setEconomySnapshot({
+        ...cur,
+        items: inv.items.map((r) => ({
+          itemId: r.item_id,
+          category: r.category,
+          quantity: r.quantity,
+        })),
+        loadout: {
+          ...cur.loadout,
+          avatar: inv.loadout.avatar,
+          frame: inv.loadout.frame,
+          cardStyle: inv.loadout.cardStyle,
+          title: inv.loadout.title,
+        },
+      });
+    } catch {
+      // Fallback silenzioso in caso di sessione ospite o offline
+    }
+  };
+  void hydrateEquippedInventory();
 
   if (canvas) {
     const particles = new ParticlesCanvas(canvas);
@@ -108,11 +140,15 @@ function bootstrap(): void {
 
     if (route === 'auth') {
       if (isAuthenticated()) {
+        void hydrateEquippedInventory();
         router.navigate('gioca');
         return;
       }
       unmountActiveView = mountAuthScreen(appRoot, {
-        onAuthenticated: () => router.navigate('gioca'),
+        onAuthenticated: () => {
+          void hydrateEquippedInventory();
+          router.navigate('gioca');
+        },
         onBack: () => router.navigate('splash'),
       });
       return;

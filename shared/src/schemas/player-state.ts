@@ -22,4 +22,9 @@ export class PlayerState extends Schema {
   @type("string") titleId: string = "";
   /** Squadra per modalita Team 2v2 ('A' | 'B' | ''). */
   @type("string") teamId: string = "";
+  /** Metadata visiva pubblica in partita (rank & titolo di player/bot). */
+  @type("string") rankTier: string = "Bronze I";
+  @type("number") mmr: number = 1000;
+  @type("string") titleText: string = "";
+  @type("string") titleColor: string = "";
 }

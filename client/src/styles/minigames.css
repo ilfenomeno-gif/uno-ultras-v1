@@ -313,6 +313,7 @@
 }
 
 .mg-card-back {
+  position: relative;
   width: 92px;
   height: 132px;
   border-radius: 11px;
@@ -325,6 +326,7 @@
     0 0 20px rgba(0, 229, 255, 0.35);
   display: grid;
   place-items: center;
+  overflow: hidden;
   font-family: var(--font-display, 'Rajdhani', sans-serif);
   font-weight: 800;
   font-size: 0.8rem;
@@ -332,6 +334,29 @@
   text-transform: uppercase;
   color: #b8f6ff;
   flex-shrink: 0;
+}
+
+.mg-card-back__art {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  opacity: 0.92;
+}
+
+.mg-card-back__art svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.mg-card-back__text {
+  position: relative;
+  z-index: 2;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(5, 11, 26, 0.78);
+  font-size: 0.72rem;
 }
 
 .mg-card-back--clickable {
@@ -993,4 +1018,129 @@
   .mg-mille-track-fill {
     transition: none !important;
   }
+}
+
+/* ---------- Contenders Bar (Rank, Title, Avatar, Frame) & Arena Theme ---------- */
+.mg-fs-stage[data-arena-theme='theme_tokyo_rain'] {
+  background:
+    radial-gradient(circle at 18% 12%, rgba(0, 229, 255, 0.22), transparent 44%),
+    radial-gradient(circle at 82% 16%, rgba(255, 45, 149, 0.2), transparent 46%),
+    repeating-linear-gradient(
+      115deg,
+      rgba(56, 189, 248, 0.04) 0px,
+      rgba(56, 189, 248, 0.04) 1px,
+      transparent 1px,
+      transparent 28px
+    ),
+    linear-gradient(180deg, #050a1e 0%, #0a1432 54%, #09061b 100%);
+}
+
+.mg-contenders-bar {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 20px 4px;
+}
+
+.mg-contender-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  background: rgba(9, 19, 44, 0.88);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+}
+
+.mg-contender-chip.is-self {
+  border-color: rgba(0, 229, 255, 0.55);
+}
+
+.mg-contender-chip.is-active {
+  border-color: #ffd166;
+  box-shadow: 0 0 18px rgba(255, 209, 102, 0.42);
+}
+
+.mg-contender-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  padding: 2px;
+  display: grid;
+  place-items: center;
+  background: rgba(12, 22, 48, 0.92);
+  border: 2px solid rgba(148, 163, 184, 0.5);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.mg-contender-avatar svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.mg-contender-avatar.career-frame--gold {
+  border-color: #ffd166;
+  box-shadow: 0 0 10px rgba(255, 209, 102, 0.55);
+}
+
+.mg-contender-avatar.career-frame--prism {
+  border-color: #38bdf8;
+  box-shadow: 0 0 12px rgba(192, 132, 252, 0.65);
+}
+
+.mg-contender-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mg-contender-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-weight: 800;
+  font-size: 0.9rem;
+  color: #f8fafc;
+}
+
+.mg-contender-bot-tag {
+  font-size: 0.62rem;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(56, 189, 248, 0.2);
+  color: #7dd3fc;
+  letter-spacing: 0.06em;
+}
+
+.mg-contender-sub-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.mg-contender-rank {
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  background: rgba(5, 11, 26, 0.85);
+}
+
+.mg-contender-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(15, 28, 56, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.16);
 }

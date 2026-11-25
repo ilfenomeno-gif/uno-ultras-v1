@@ -3,18 +3,29 @@
 // ============================================================
 
 import type { UnoCard } from '@uno/shared';
+import { getShopItemArtworkSvg } from '../ui/navigation/shop-artworks.js';
 import { formatCardSymbol, formatColorLabel } from './card-format.js';
 
 export function renderDiscardPile(
   container: HTMLElement,
   top: UnoCard | null,
   activeColor: string,
-  direction: number
+  direction: number,
+  cardBackId = 'back_default'
 ): void {
   container.innerHTML = '';
 
   const pileWrap = document.createElement('div');
   pileWrap.className = 'discard-pile-wrap';
+
+  const drawDeck = document.createElement('div');
+  drawDeck.className = 'uno-deck-card';
+  drawDeck.dataset['cardBack'] = cardBackId || 'back_default';
+  drawDeck.innerHTML = `
+    <div class="uno-deck-card__art">${getShopItemArtworkSvg(cardBackId || 'back_default', 'card_back')}</div>
+    <span class="uno-deck-card__label">MAZZO</span>
+  `;
+  pileWrap.appendChild(drawDeck);
 
   if (!top) {
     const empty = document.createElement('div');

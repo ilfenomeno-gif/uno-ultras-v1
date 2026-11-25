@@ -13,8 +13,19 @@ import {
 import { announce, purgeOnClose } from '../../core/aria-live.js';
 import { playEarcon } from '../../core/audio-earcons.js';
 import { hasBlockedModifier } from '../../core/keyboard-nav.js';
-import { settleMiniGameMatch } from '../../net/tcp/rest-client.js';
+import {
+  fetchInventory,
+  fetchTopLeaderboard,
+  settleMiniGameMatch,
+} from '../../net/tcp/rest-client.js';
+import {
+  getEconomySnapshot,
+  setEconomySnapshot,
+  subscribeEconomy,
+} from '../../state/inventory-store.js';
 import { getProfile, isAuthenticated, patchProfile } from '../../state/profile-store.js';
+import { resolveCareerFrameClass } from '../navigation/career-helpers.js';
+import { getShopItemArtworkSvg } from '../navigation/shop-artworks.js';
 import {
   computeBlackjackTotal,
   findCardActions,
@@ -23,8 +34,10 @@ import {
   formatMiniGameActionLabel,
   formatScoreSummary,
   formatStandardCardLabel,
-  pickMiniGameBotNames,
+  pickMiniGameBotProfiles,
+  resolveMiniGameTitleDisplay,
   type MiniGameActionLike,
+  type MiniGameBotProfile,
 } from './minigame-helpers.js';
 
 interface RenderBoardContext {
@@ -82,11 +95,19 @@ function createStandardCardEl(
 }
 
 function createCardBackEl(label: string, onClick?: () => void): HTMLElement {
+  const cardBackId = getEconomySnapshot().loadout.cardStyle || 'back_default';
   const tag = onClick ? 'button' : 'div';
   const back = document.createElement(tag);
   if (back instanceof HTMLButtonElement) back.type = 'button';
   back.className = onClick ? 'mg-card-back mg-card-back--clickable' : 'mg-card-back';
-  back.textContent = label;
+  back.dataset['cardBack'] = cardBackId;
+  const art = document.createElement('div');
+  art.className = 'mg-card-back__art';
+  art.innerHTML = getShopItemArtworkSvg(cardBackId, 'card_back');
+  const text = document.createElement('span');
+  text.className = 'mg-card-back__text';
+  text.textContent = label;
+  back.append(art, text);
   if (onClick) {
     back.setAttribute('aria-label', label);
     back.addEventListener('click', onClick);
@@ -601,7 +622,8 @@ export function openMiniGameSandboxModal(
   const desiredCount = opts.playerCount && opts.playerCount >= 2 ? opts.playerCount : engine.minPlayers;
   const totalSeats = Math.max(Math.max(2, engine.minPlayers), Math.min(engine.maxPlayers, desiredCount));
   let matchSeed = Date.now();
-  let players = ['Tu', ...pickMiniGameBotNames(totalSeats - 1, matchSeed)];
+  let botProfiles: MiniGameBotProfile[] = pickMiniGameBotProfiles(totalSeats - 1, matchSeed, mode);
+  let players = ['Tu', ...botProfiles.map((b) => b.name)];
   let state = engine.createInitialState(`local_${mode}_${matchSeed}`, players, matchSeed);
   let startedAtMs = Date.now();
   let turnsPlayed = 0;
@@ -611,6 +633,18 @@ export function openMiniGameSandboxModal(
   let raiseAmount = 40;
 
   const stage = document.createElement('div');
+  const applyStageTheme = (): void => {
+    const themeId = getEconomySnapshot().loadout.theme;
+    if (themeId && themeId !== 'theme_default') {
+      stage.dataset['arenaTheme'] = themeId;
+    } else {
+      delete stage.dataset['arenaTheme'];
+    }
+  };
+  applyStageTheme();
+  let myRankTier = 'Bronze I';
+  let myMmr = 1000;
+  const seatBucket: 2 | 3 | 4 = totalSeats <= 2 ? 2 : totalSeats === 3 ? 3 : 4;
   stage.className = 'mg-fs-stage';
   stage.setAttribute('role', 'dialog');
   stage.setAttribute('aria-modal', 'true');
@@ -645,7 +679,13 @@ export function openMiniGameSandboxModal(
       document.fullscreenElement === stage ? 'Riduci Schermo' : 'Schermo Intero';
   };
 
+  let closed = false;
+  let unsubEconomy: (() => void) | null = null;
   const closeStage = (): void => {
+    if (closed) return;
+    closed = true;
+    unsubEconomy?.();
+    unsubEconomy = null;
     window.removeEventListener('keydown', onKeyDown);
     document.removeEventListener('fullscreenchange', syncFullscreenLabel);
     if (document.fullscreenElement === stage && typeof document.exitFullscreen === 'function') {
@@ -795,6 +835,96 @@ export function openMiniGameSandboxModal(
     scoreBadge.textContent = formatScoreSummary(view);
 
     viewport.replaceChildren();
+    const curLoadout = getEconomySnapshot().loadout;
+    const localProfile = getProfile();
+    const myName = localProfile?.username || 'Tu';
+    const activeTurnId = String(
+      view['currentPlayerId'] ?? state.playerOrder[state.currentTurnIndex] ?? 'Tu',
+    );
+    const myTitle = resolveMiniGameTitleDisplay(curLoadout.title);
+    const contendersBar = el('section', 'mg-contenders-bar');
+    contendersBar.setAttribute('aria-label', 'Giocatori al tavolo');
+
+    const appendContender = (info: {
+      name: string;
+      isSelf: boolean;
+      isBot: boolean;
+      isActive: boolean;
+      avatarId: string;
+      frameId: string;
+      rankTier: string;
+      rankColor: string;
+      titleText: string;
+      titleColor: string;
+    }): void => {
+      const chip = el('div', 'mg-contender-chip');
+      if (info.isSelf) chip.classList.add('is-self');
+      if (info.isActive) chip.classList.add('is-active');
+
+      const av = el('div', `mg-contender-avatar ${resolveCareerFrameClass(info.frameId)}`);
+      av.innerHTML = getShopItemArtworkSvg(info.avatarId || 'avatar_default', 'avatar');
+
+      const meta = el('div', 'mg-contender-meta');
+      const nameRow = el('div', 'mg-contender-name-row');
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = info.name;
+      nameRow.appendChild(nameSpan);
+      if (info.isBot) {
+        const tag = el('span', 'mg-contender-bot-tag', 'BOT');
+        nameRow.appendChild(tag);
+      }
+
+      const subRow = el('div', 'mg-contender-sub-row');
+      const rankPill = el('span', 'mg-contender-rank', info.rankTier);
+      rankPill.style.color = info.rankColor;
+      subRow.appendChild(rankPill);
+      if (info.titleText) {
+        const titlePill = el('span', 'mg-contender-title', info.titleText);
+        titlePill.style.color = info.titleColor || '#94a3b8';
+        subRow.appendChild(titlePill);
+      }
+      meta.append(nameRow, subRow);
+      chip.append(av, meta);
+      contendersBar.appendChild(chip);
+    };
+
+    const myRankColor =
+      myMmr >= 2100
+        ? '#ff5ef7'
+        : myMmr >= 1800
+          ? '#ff4d6d'
+          : myMmr >= 1500
+            ? '#38bdf8'
+            : myMmr >= 1200
+              ? '#ffd166'
+              : '#cbd5e1';
+    appendContender({
+      name: myName,
+      isSelf: true,
+      isBot: false,
+      isActive: activeTurnId === 'Tu',
+      avatarId: curLoadout.avatar || 'avatar_default',
+      frameId: curLoadout.frame || 'frame_default',
+      rankTier: myRankTier,
+      rankColor: myRankColor,
+      titleText: myTitle.text,
+      titleColor: myTitle.color,
+    });
+    for (const bot of botProfiles) {
+      appendContender({
+        name: bot.name,
+        isSelf: false,
+        isBot: true,
+        isActive: activeTurnId === bot.name,
+        avatarId: bot.avatarId,
+        frameId: bot.frameId,
+        rankTier: bot.rankTier,
+        rankColor: bot.rankColor,
+        titleText: bot.titleText,
+        titleColor: bot.titleColor,
+      });
+    }
+    viewport.appendChild(contendersBar);
     const board = renderModeBoard({
       mode,
       view,
@@ -862,7 +992,8 @@ export function openMiniGameSandboxModal(
         turnsPlayed = 0;
         settledThisMatch = false;
         lastReceipt = null;
-        players = ['Tu', ...pickMiniGameBotNames(totalSeats - 1, matchSeed)];
+        botProfiles = pickMiniGameBotProfiles(totalSeats - 1, matchSeed, mode);
+        players = ['Tu', ...botProfiles.map((b) => b.name)];
         state = engine.createInitialState(`local_${mode}_${matchSeed}`, players, matchSeed);
         selectedCardId = null;
         playEarcon('confirm');
@@ -900,6 +1031,53 @@ export function openMiniGameSandboxModal(
       viewport.appendChild(botBar);
     }
   };
+
+  unsubEconomy = subscribeEconomy(() => {
+    applyStageTheme();
+    if (!closed) paint();
+  });
+
+  if (isAuthenticated()) {
+    void fetchInventory()
+      .then((inv) => {
+        if (closed) return;
+        const cur = getEconomySnapshot();
+        setEconomySnapshot({
+          ...cur,
+          items: inv.items.map((r) => ({
+            itemId: r.item_id,
+            category: r.category,
+            quantity: r.quantity,
+          })),
+          loadout: {
+            ...cur.loadout,
+            avatar: inv.loadout.avatar,
+            frame: inv.loadout.frame,
+            cardStyle: inv.loadout.cardStyle,
+            title: inv.loadout.title,
+          },
+        });
+      })
+      .catch(() => undefined);
+
+    void fetchTopLeaderboard(100, { mode, players: seatBucket })
+      .then((res) => {
+        if (closed) return;
+        const meProfile = getProfile();
+        if (!meProfile) return;
+        const found = res.entries.find(
+          (entry) =>
+            entry.playerId === meProfile.id ||
+            entry.username.toLowerCase() === meProfile.username.toLowerCase(),
+        );
+        if (found) {
+          myRankTier = found.rankTier;
+          myMmr = found.mmr;
+          paint();
+        }
+      })
+      .catch(() => undefined);
+  }
 
   paint();
   document.body.appendChild(stage);

@@ -2,7 +2,14 @@
 // UNO ULTRA Client — 7 Mini-Games Pure Display & Action Helpers
 // ============================================================
 
-import { REALISTIC_BOT_PROFILES, type AnyMiniGameMode } from '@uno/shared';
+import {
+  CATALOG_BY_ID,
+  getRankInfo,
+  LEGACY_TITLES_BY_ID,
+  pickPrestigiousTitleForMMR,
+  REALISTIC_BOT_PROFILES,
+  type AnyMiniGameMode,
+} from '@uno/shared';
 
 export interface MiniGameActionLike {
   readonly type: string;
@@ -259,19 +266,107 @@ export function formatScoreSummary(view: Record<string, unknown>): string {
   return entries.map(([pid, val]) => `${pid}: ${String(val ?? 0)}`).join(' · ');
 }
 
+export interface MiniGameBotProfile {
+  readonly name: string;
+  readonly avatar: string;
+  readonly avatarId: string;
+  readonly frameId: string;
+  readonly baseMmr: number;
+  readonly rankTier: string;
+  readonly rankColor: string;
+  readonly titleText: string;
+  readonly titleColor: string;
+}
+
+const MINI_GAME_AVATARS = [
+  'avatar_default',
+  'avatar_neon_fox',
+  'avatar_cyber_dragon',
+  'avatar_chrono_ace',
+] as const;
+
+export function resolveMiniGameTitleDisplay(titleId: string): { text: string; color: string } {
+  if (!titleId) return { text: '', color: '' };
+  const legacy = LEGACY_TITLES_BY_ID[titleId];
+  if (legacy) return { text: legacy.name, color: legacy.color };
+  const cat = CATALOG_BY_ID[titleId];
+  if (cat) {
+    const color =
+      cat.rarity === 'mythic'
+        ? '#ff5ef7'
+        : cat.rarity === 'legendary'
+          ? '#ffd166'
+          : cat.rarity === 'epic'
+            ? '#c084fc'
+            : '#38bdf8';
+    return { text: cat.name, color };
+  }
+  return { text: titleId, color: '#94a3b8' };
+}
+
+/**
+ * Builds distinct realistic opponent profiles (name, rank, title, avatar, frame) for mini-games.
+ */
+export function pickMiniGameBotProfiles(
+  botCount: number,
+  seed = Date.now(),
+  mode = 'uno',
+): MiniGameBotProfile[] {
+  const count = Math.max(1, Math.min(3, botCount));
+  const total = REALISTIC_BOT_PROFILES.length;
+  const start = Math.abs(seed) % total;
+  const picked: MiniGameBotProfile[] = [];
+  for (let i = 0; i < total && picked.length < count; i++) {
+    const candidate = REALISTIC_BOT_PROFILES[(start + i * 7) % total];
+    if (
+      candidate &&
+      candidate.name !== 'Tu' &&
+      !picked.some((b) => b.name === candidate.name)
+    ) {
+      const rank = getRankInfo(candidate.baseMmr);
+      const titleDef = pickPrestigiousTitleForMMR(candidate.baseMmr, mode, Math.abs(seed) + i);
+      const avatarId =
+        MINI_GAME_AVATARS[(Math.abs(seed) + i) % MINI_GAME_AVATARS.length] ?? 'avatar_default';
+      const frameId =
+        candidate.baseMmr >= 1950
+          ? 'frame_ssl_prism'
+          : candidate.baseMmr >= 1400
+            ? 'frame_gold_pulse'
+            : 'frame_default';
+      picked.push({
+        name: candidate.name,
+        avatar: candidate.avatar,
+        avatarId,
+        frameId,
+        baseMmr: candidate.baseMmr,
+        rankTier: rank.tier,
+        rankColor: rank.colorHex,
+        titleText: titleDef.name,
+        titleColor: titleDef.color,
+      });
+    }
+  }
+  if (picked.length > 0) return picked;
+  const fallbackRank = getRankInfo(1200);
+  const fallbackTitle = pickPrestigiousTitleForMMR(1200, mode, 0);
+  return [
+    {
+      name: '🗡️ DreadForce',
+      avatar: '🗡️',
+      avatarId: 'avatar_cyber_dragon',
+      frameId: 'frame_gold_pulse',
+      baseMmr: 1200,
+      rankTier: fallbackRank.tier,
+      rankColor: fallbackRank.colorHex,
+      titleText: fallbackTitle.name,
+      titleColor: fallbackTitle.color,
+    },
+  ];
+}
+
 /**
  * Builds distinct realistic opponent names for mini-game tables (excluding 'Tu').
  */
 export function pickMiniGameBotNames(botCount: number, seed = Date.now()): string[] {
-  const count = Math.max(1, Math.min(3, botCount));
-  const total = REALISTIC_BOT_PROFILES.length;
-  const start = Math.abs(seed) % total;
-  const picked: string[] = [];
-  for (let i = 0; i < total && picked.length < count; i++) {
-    const candidate = REALISTIC_BOT_PROFILES[(start + i * 7) % total];
-    if (candidate && candidate.name !== 'Tu' && !picked.includes(candidate.name)) {
-      picked.push(candidate.name);
-    }
-  }
-  return picked.length > 0 ? picked : ['🗡️ DreadForce'];
+  return pickMiniGameBotProfiles(botCount, seed).map((b) => b.name);
 }

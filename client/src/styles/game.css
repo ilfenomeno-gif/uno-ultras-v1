@@ -6,7 +6,7 @@
   position: fixed;
   inset: 0;
   display: grid;
-  grid-template-rows: auto auto 1fr auto auto;
+  grid-template-rows: auto auto 1fr auto auto auto;
   background: radial-gradient(ellipse at center, rgba(11, 23, 54, 0.92) 0%, rgba(3, 6, 15, 0.97) 100%);
   color: var(--color-text);
   font-family: var(--font-body);
@@ -130,8 +130,10 @@
 }
 
 .discard-pile-wrap {
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
 }
 
 .discard-meta {
@@ -465,4 +467,150 @@ body.hide-key-hints .uno-card__hotkey {
 .scores-row.is-winner {
   border: 1px solid var(--color-gold);
   color: var(--color-gold);
+}
+
+/* --- Loadout, Bot Identity & Arena Theme in UNO Match --- */
+.game-view[data-arena-theme='theme_tokyo_rain'] {
+  background:
+    radial-gradient(circle at 20% 15%, rgba(0, 229, 255, 0.22), transparent 44%),
+    radial-gradient(circle at 80% 18%, rgba(255, 45, 149, 0.2), transparent 46%),
+    repeating-linear-gradient(
+      115deg,
+      rgba(56, 189, 248, 0.04) 0px,
+      rgba(56, 189, 248, 0.04) 1px,
+      transparent 1px,
+      transparent 28px
+    ),
+    linear-gradient(180deg, #050a1e 0%, #0a1432 52%, #09061b 100%);
+}
+
+.uno-identity-plate {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.uno-avatar-badge {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  padding: 2px;
+  display: grid;
+  place-items: center;
+  background: rgba(12, 22, 48, 0.9);
+  border: 2px solid rgba(148, 163, 184, 0.55);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.uno-avatar-badge svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.uno-avatar-badge.career-frame--gold {
+  border-color: #ffd166;
+  box-shadow: 0 0 12px rgba(255, 209, 102, 0.55);
+}
+
+.uno-avatar-badge.career-frame--prism {
+  border-color: #38bdf8;
+  box-shadow: 0 0 14px rgba(192, 132, 252, 0.65);
+}
+
+.uno-identity-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.16rem;
+  min-width: 0;
+}
+
+.uno-identity-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.uno-rank-pill {
+  padding: 0.1rem 0.48rem;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  background: rgba(8, 18, 40, 0.9);
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+.uno-title-pill {
+  padding: 0.1rem 0.48rem;
+  border-radius: 6px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: rgba(15, 28, 56, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-view__my-plate {
+  align-self: center;
+  justify-self: center;
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: 999px;
+  background: rgba(9, 19, 44, 0.84);
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+
+.uno-deck-card {
+  position: relative;
+  width: 88px;
+  height: 136px;
+  border-radius: 12px;
+  border: 2px solid rgba(0, 229, 255, 0.65);
+  overflow: hidden;
+  background: #0d1b3e;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.uno-deck-card__art {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+
+.uno-deck-card__art svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.uno-deck-card__label {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(5, 11, 26, 0.84);
+  color: #b8f6ff;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
 }
