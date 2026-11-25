@@ -37,6 +37,15 @@ export interface JoinOptions {
   spectator?: boolean;
 }
 
+function formatWsJoinError(err: unknown): Error {
+  if (err instanceof Error && err.message && err.message !== '[object Event]') {
+    return err;
+  }
+  return new Error(
+    'Connessione al server di gioco non riuscita. Verifica che il server sia attivo e riprova.',
+  );
+}
+
 export async function joinUnoRoom(opts: JoinOptions): Promise<Room<UnoRoomState>> {
   if (room) await leaveRoom();
   latestHand = null;
@@ -49,7 +58,28 @@ export async function joinUnoRoom(opts: JoinOptions): Promise<Room<UnoRoomState>
     ...(opts.variant !== undefined ? { variant: opts.variant } : {}),
     ...(opts.spectator !== undefined ? { spectator: opts.spectator } : {}),
   };
-  room = await getClient().joinOrCreate<UnoRoomState>('uno', payload);
+  try {
+    room = await getClient().joinOrCreate<UnoRoomState>('uno', payload);
+  } catch (err) {
+    throw formatWsJoinError(err);
+  }
+  room.onMessage<HandUpdateMessage>(TCP_CHANNELS.HAND, (msg) => {
+    latestHand = msg.cards;
+  });
+  return room;
+}
+
+export async function joinUnoRoomById(
+  roomId: string,
+  token: string,
+): Promise<Room<UnoRoomState>> {
+  if (room) await leaveRoom();
+  latestHand = null;
+  try {
+    room = await getClient().joinById<UnoRoomState>(roomId, { token });
+  } catch (err) {
+    throw formatWsJoinError(err);
+  }
   room.onMessage<HandUpdateMessage>(TCP_CHANNELS.HAND, (msg) => {
     latestHand = msg.cards;
   });

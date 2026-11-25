@@ -102,6 +102,15 @@ export interface DevTransactionRecord {
   created_at: string;
 }
 
+export interface DevPlaylistRankRecord {
+  mode: string;
+  playerCount: number;
+  mmr: number;
+  rankTier: string;
+  wins: number;
+  losses: number;
+}
+
 export interface DevStateSnapshot {
   tournamentCredits: Record<string, number>;
   loadouts: Record<string, DevLoadout>;
@@ -115,6 +124,7 @@ export interface DevStateSnapshot {
   transactions: DevTransactionRecord[];
   idempotencyBalances: Record<string, number>;
   leaderboards: Record<string, Record<string, { username: string; mmr: number }>>;
+  playlistRanks: Record<string, Record<string, DevPlaylistRankRecord>>;
 }
 
 const DEV_STATE_FILE = path.join(os.tmpdir(), 'uno-ultra-dev-state.json');
@@ -132,6 +142,7 @@ const EMPTY_STATE = (): DevStateSnapshot => ({
   transactions: [],
   idempotencyBalances: {},
   leaderboards: {},
+  playlistRanks: {},
 });
 
 export function isDbUnavailableError(err: unknown): boolean {
@@ -171,6 +182,7 @@ export function readDevState(): DevStateSnapshot {
       transactions: Array.isArray(raw.transactions) ? raw.transactions : [],
       idempotencyBalances: raw.idempotencyBalances ?? {},
       leaderboards: raw.leaderboards ?? {},
+      playlistRanks: raw.playlistRanks ?? {},
     };
   } catch {
     return base;

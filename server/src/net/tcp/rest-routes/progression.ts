@@ -9,6 +9,7 @@ import { authRequired } from '../../../auth/middleware.js';
 import { logger } from '../../../config/logger.js';
 import { getOrCreateBattleCard } from '../../../persistence/postgres/repositories/battle-card.js';
 import { getOrInitPlayerChallenges } from '../../../persistence/postgres/repositories/challenges.js';
+import { listPlayerPlaylistRanks } from '../../../persistence/postgres/repositories/playlist-ranks.js';
 import { findPlayerById } from '../../../persistence/postgres/repositories/players.js';
 import { getPlayerBalances } from '../../../persistence/postgres/repositories/transactions.js';
 import { createRateLimiter } from '../../../security/rate-limiter.js';
@@ -25,6 +26,7 @@ const SettleMatchSchema = z.object({
   matchId: z.string().trim().min(3).max(80),
   mode: z.enum(GAME_MODES),
   variant: z.string().trim().min(1).max(40).default('standard'),
+  playerCount: z.number().int().min(2).max(4).default(2),
   isRanked: z.boolean().default(false),
   won: z.boolean(),
   score: z.number().int().min(-5000).max(50000).default(0),
@@ -44,12 +46,20 @@ progressionRouter.post('/settle-match', authRequired, settleLimiter, async (req,
   const playerId = req.user!.sub;
   const username = req.user!.username;
   const d = parsed.data;
+  const botParticipants = Array.from({ length: Math.max(1, d.playerCount - 1) }, (_, idx) => ({
+    id: `bot_${idx + 1}`,
+    username: `Bot_${idx + 1}`,
+    isBot: true,
+    score: idx === 0 ? d.opponentScore : Math.max(0, d.opponentScore - (idx + 1) * 10),
+    cardsPlayed: 1,
+  }));
 
   try {
     const receipts = await settleFinishedMatchWithReceipts({
       matchId: d.matchId,
       mode: d.mode,
       variant: d.variant,
+      playerCount: d.playerCount,
       isRanked: d.isRanked,
       winnerId: d.won ? playerId : 'bot_1',
       turnCount: d.turnCount,
@@ -62,13 +72,7 @@ progressionRouter.post('/settle-match', authRequired, settleLimiter, async (req,
           score: d.score,
           cardsPlayed: d.cardsPlayed,
         },
-        {
-          id: 'bot_1',
-          username: 'Bot_1',
-          isBot: true,
-          score: d.opponentScore,
-          cardsPlayed: 1,
-        },
+        ...botParticipants,
       ],
     });
 
@@ -106,11 +110,12 @@ progressionRouter.post('/settle-match', authRequired, settleLimiter, async (req,
 progressionRouter.get('/snapshot', authRequired, async (req, res) => {
   const playerId = req.user!.sub;
   try {
-    const [player, balances, battleCard, challenges] = await Promise.all([
+    const [player, balances, battleCard, challenges, playlistRanks] = await Promise.all([
       findPlayerById(playerId),
       getPlayerBalances(playerId).catch(() => ({ vcard: 0, tournamentCredits: 0 })),
       getOrCreateBattleCard(playerId),
       getOrInitPlayerChallenges(playerId),
+      listPlayerPlaylistRanks(playerId).catch(() => ({})),
     ]);
     const mmr = Number(player?.mmr ?? 400);
     const activeChallenges = challenges.filter((c) => !c.claimed).length;
@@ -123,6 +128,7 @@ progressionRouter.get('/snapshot', authRequired, async (req, res) => {
       username: player?.username ?? req.user!.username,
       mmr,
       rankTier: player?.rank_tier ?? getRankFromMMR(mmr),
+      playlistRanks,
       vcardBalance: Number(player?.vcard ?? balances.vcard),
       tournamentCredits: balances.tournamentCredits,
       battleCard: {
@@ -143,6 +149,7 @@ progressionRouter.get('/snapshot', authRequired, async (req, res) => {
       username: req.user!.username,
       mmr: 400,
       rankTier: getRankFromMMR(400),
+      playlistRanks: {},
       vcardBalance: 0,
       tournamentCredits: 0,
       battleCard: { tier: 'free', level: 1, xp: 0 },

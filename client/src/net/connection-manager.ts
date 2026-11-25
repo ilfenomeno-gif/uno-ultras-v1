@@ -36,4 +36,10 @@ export async function enterMatch(opts: {
   return colyseus.joinUnoRoom({ token, ...opts });
 }
 
+export async function joinMatchById(roomId: string): Promise<Room<UnoRoomState>> {
+  const token = getToken();
+  if (!token) throw new Error('Utente non autenticato');
+  return colyseus.joinUnoRoomById(roomId, token);
+}
+
 export { colyseus };

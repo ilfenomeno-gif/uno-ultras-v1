@@ -2,7 +2,13 @@
 // UNO ULTRA Server — Matchmaking MMR Settlement & Adaptive Bounds
 // ============================================================
 
-import { calculateEloDelta, getRankFromMMR } from '@uno/shared';
+import {
+  calculateEloDelta,
+  getRankFromMMR,
+  type GameMode,
+  type PlaylistPlayerCount,
+} from '@uno/shared';
+import { upsertPlayerPlaylistRank } from '../persistence/postgres/repositories/playlist-ranks.js';
 import { updatePlayerRank } from '../persistence/postgres/repositories/players.js';
 import { updateLeaderboardScore } from '../persistence/redis/leaderboard.js';
 
@@ -16,6 +22,8 @@ export async function settleRankedMatchForPlayers(input: {
   winnerId: string;
   participants: readonly { playerId: string; username: string; mmr: number; isBot: boolean }[];
   playlistMultiplier?: number;
+  mode?: GameMode;
+  playerCount?: PlaylistPlayerCount;
 }): Promise<
   readonly {
     playerId: string;
@@ -52,14 +60,26 @@ export async function settleRankedMatchForPlayers(input: {
     const rankTier = elo.newTier ?? getRankFromMMR(mmrAfter);
 
     try {
-      await updatePlayerRank(p.playerId, mmrAfter, rankTier);
+      if (input.mode && input.playerCount) {
+        const { peakMmr } = await upsertPlayerPlaylistRank({
+          playerId: p.playerId,
+          mode: input.mode,
+          playerCount: input.playerCount,
+          mmr: mmrAfter,
+          rankTier,
+          won,
+        });
+        await updateLeaderboardScore(p.playerId, p.username, mmrAfter, {
+          mode: input.mode,
+          playerCount: input.playerCount,
+          globalMmr: peakMmr,
+        }).catch(() => {});
+      } else {
+        await updatePlayerRank(p.playerId, mmrAfter, rankTier);
+        await updateLeaderboardScore(p.playerId, p.username, mmrAfter).catch(() => {});
+      }
     } catch {
       // Best effort if DB offline in unit test
-    }
-    try {
-      await updateLeaderboardScore(p.playerId, p.username, mmrAfter);
-    } catch {
-      // Best effort if leaderboard unavailable
     }
 
     results.push({

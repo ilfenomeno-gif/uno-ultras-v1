@@ -118,4 +118,86 @@ describe('MCP Progression Hub (Rank, MMR, Modes, Challenges, Battle Card)', () =
     expect(body.battleCard.level).toBeGreaterThanOrEqual(1);
     expect(typeof body.challenges.total).toBe('number');
   });
+
+  it('keeps rank and MMR completely isolated per (mode, playerCount) playlist', async () => {
+    const reg = await fetch(`${baseUrl}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: `Iso_${Date.now().toString(36)}`,
+        password: 'TestPassword!1',
+        confirmPassword: 'TestPassword!1',
+      }),
+    });
+    expect(reg.status).toBe(201);
+    const { token: userToken } = (await reg.json()) as { token: string };
+
+    const winUno2p = await fetch(`${baseUrl}/api/progression/settle-match`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${userToken}`,
+      },
+      body: JSON.stringify({
+        matchId: `iso_uno_2p_${Date.now()}`,
+        mode: 'uno',
+        playerCount: 2,
+        isRanked: true,
+        won: true,
+        score: 120,
+        opponentScore: 20,
+        turnCount: 8,
+        durationSec: 25,
+        cardsPlayed: 7,
+      }),
+    });
+    expect(winUno2p.status).toBe(200);
+    const body2p = (await winUno2p.json()) as {
+      receipt: { playlistKey: string; mmrAfter: number; playerCount: number };
+    };
+    expect(body2p.receipt.playlistKey).toBe('uno:2p');
+    expect(body2p.receipt.playerCount).toBe(2);
+    expect(body2p.receipt.mmrAfter).toBeGreaterThan(0);
+
+    // Winning uno:2p must NOT alter uno:3p or scala40:2p!
+    const loseUno3p = await fetch(`${baseUrl}/api/progression/settle-match`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${userToken}`,
+      },
+      body: JSON.stringify({
+        matchId: `iso_uno_3p_${Date.now()}`,
+        mode: 'uno',
+        playerCount: 3,
+        isRanked: true,
+        won: false,
+        score: 10,
+        opponentScore: 90,
+        turnCount: 6,
+        durationSec: 20,
+        cardsPlayed: 5,
+      }),
+    });
+    expect(loseUno3p.status).toBe(200);
+    const body3p = (await loseUno3p.json()) as {
+      receipt: { playlistKey: string; mmrBefore: number; mmrAfter: number; rankAfter: string };
+    };
+    expect(body3p.receipt.playlistKey).toBe('uno:3p');
+    expect(body3p.receipt.mmrBefore).toBe(0);
+    expect(body3p.receipt.mmrAfter).toBe(0);
+    expect(body3p.receipt.rankAfter).toBe('Bronze I');
+
+    const snapRes = await fetch(`${baseUrl}/api/progression/snapshot`, {
+      headers: { Authorization: `Bearer ${userToken}` },
+    });
+    expect(snapRes.status).toBe(200);
+    const snap = (await snapRes.json()) as {
+      playlistRanks: Record<string, { mmr: number; rankTier: string }>;
+    };
+    expect(snap.playlistRanks['uno:2p']?.mmr).toBe(body2p.receipt.mmrAfter);
+    expect(snap.playlistRanks['uno:3p']?.mmr).toBe(0);
+    expect(snap.playlistRanks['uno:3p']?.rankTier).toBe('Bronze I');
+    expect(snap.playlistRanks['scala40:2p']).toBeUndefined();
+  });
 });

@@ -110,6 +110,8 @@ export interface MatchRewardReceipt {
   tournamentCreditsEarned: number;
   challengesProgressed: number;
   modeMultiplier: number;
+  playerCount?: 2 | 3 | 4;
+  playlistKey?: string;
 }
 
 /** Il server annuncia la fine della partita. */

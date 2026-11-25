@@ -7,6 +7,7 @@ import type {
   LoginPayload,
   MatchRewardReceipt,
   PlayerProfile,
+  PlaylistRankEntry,
   RegisterPayload,
 } from '@uno/shared';
 import { getToken } from '../../state/profile-store.js';
@@ -84,9 +85,24 @@ interface ApiError {
 }
 
 async function requestJson<T>(path: string, init: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, init);
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, init);
+  } catch {
+    throw new Error('Server non raggiungibile al momento. Verifica la connessione e riprova.');
+  }
   const text = await res.text();
-  const data: unknown = text ? JSON.parse(text) : {};
+  let data: unknown = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      if (!res.ok) {
+        throw new Error(`Errore del server (HTTP ${res.status}). Riprova tra qualche secondo.`);
+      }
+      throw new Error('Risposta del server non valida.');
+    }
+  }
 
   if (!res.ok) {
     const err = data as ApiError;
@@ -421,6 +437,7 @@ export async function settleMiniGameMatch(payload: {
   matchId: string;
   mode: GameMode;
   variant?: string;
+  playerCount?: 2 | 3 | 4;
   isRanked: boolean;
   won: boolean;
   score: number;
@@ -437,6 +454,7 @@ export async function fetchProgressionSnapshot(): Promise<{
   username: string;
   mmr: number;
   rankTier: string;
+  playlistRanks?: Readonly<Record<string, PlaylistRankEntry>>;
   vcardBalance: number;
   tournamentCredits: number;
   battleCard: { tier: string; level: number; xp: number };

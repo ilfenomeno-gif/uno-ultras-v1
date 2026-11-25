@@ -3,16 +3,18 @@
 // ============================================================
 
 import {
+  formatPlaylistKey,
   MINI_GAME_ENGINES,
   type AnyMiniGameMode,
   type MatchRewardReceipt,
+  type PlaylistRankEntry,
   type RankTier,
 } from '@uno/shared';
 import { announce, purgeOnClose } from '../../core/aria-live.js';
 import { playEarcon } from '../../core/audio-earcons.js';
 import { hasBlockedModifier } from '../../core/keyboard-nav.js';
 import { settleMiniGameMatch } from '../../net/tcp/rest-client.js';
-import { isAuthenticated, patchProfile } from '../../state/profile-store.js';
+import { getProfile, isAuthenticated, patchProfile } from '../../state/profile-store.js';
 import {
   computeBlackjackTotal,
   findCardActions,
@@ -693,10 +695,12 @@ export function openMiniGameSandboxModal(
 
     if (!isAuthenticated()) return;
 
+    const playlistCount: 2 | 3 | 4 = totalSeats === 3 ? 3 : totalSeats >= 4 ? 4 : 2;
     void settleMiniGameMatch({
       matchId: `${mode}_${matchSeed}`,
       mode,
       variant: 'standard',
+      playerCount: playlistCount,
       isRanked,
       won: iWon,
       score: Math.round(myScore),
@@ -707,9 +711,31 @@ export function openMiniGameSandboxModal(
     })
       .then(({ receipt }) => {
         lastReceipt = receipt;
-        patchProfile({
+        const curProfile = getProfile();
+        const key = receipt.playlistKey ?? formatPlaylistKey(mode, playlistCount);
+        const prevEntry = curProfile?.playlistRanks?.[key];
+        const nextPlaylistEntry: PlaylistRankEntry = {
+          mode,
+          playerCount: playlistCount,
           mmr: receipt.mmrAfter,
           rankTier: receipt.rankAfter as RankTier,
+          wins: (prevEntry?.wins ?? 0) + (iWon ? 1 : 0),
+          losses: (prevEntry?.losses ?? 0) + (iWon ? 0 : 1),
+        };
+        const mergedPlaylists: Record<string, PlaylistRankEntry> = {
+          ...(curProfile?.playlistRanks ?? {}),
+          [key]: nextPlaylistEntry,
+        };
+        const peakMmr = Math.max(
+          receipt.mmrAfter,
+          ...Object.values(mergedPlaylists).map((e) => e.mmr),
+        );
+        const peakEntry =
+          Object.values(mergedPlaylists).find((e) => e.mmr === peakMmr) ?? nextPlaylistEntry;
+        patchProfile({
+          mmr: peakMmr,
+          rankTier: peakEntry.rankTier,
+          playlistRanks: mergedPlaylists,
           vcard: receipt.vcardBalanceAfter,
           battleCardLevel: receipt.battleCardLevelAfter,
         });
@@ -812,8 +838,9 @@ export function openMiniGameSandboxModal(
       if (lastReceipt) {
         const deltaStr =
           lastReceipt.mmrDelta >= 0 ? `+${lastReceipt.mmrDelta}` : String(lastReceipt.mmrDelta);
-        addTile('MMR', lastReceipt.isRanked ? `${deltaStr} (${lastReceipt.mmrAfter})` : `Casuale (${lastReceipt.mmrAfter})`);
-        addTile('Grado', lastReceipt.rankAfter);
+        const fmt = (lastReceipt.playerCount ?? totalSeats) <= 2 ? '1v1' : `${lastReceipt.playerCount ?? totalSeats}G`;
+        addTile(`MMR (${fmt})`, lastReceipt.isRanked ? `${deltaStr} (${lastReceipt.mmrAfter})` : `Casuale (${lastReceipt.mmrAfter})`);
+        addTile(`Grado (${fmt})`, lastReceipt.rankAfter);
         addTile('Battle Card', `+${lastReceipt.xpEarned} XP (Lv.${lastReceipt.battleCardLevelAfter})`);
         addTile('V-Card', `+${lastReceipt.vcardEarned} (Tot ${lastReceipt.vcardBalanceAfter})`);
         addTile('Sfide', `+${lastReceipt.challengesProgressed} aggiornate`);

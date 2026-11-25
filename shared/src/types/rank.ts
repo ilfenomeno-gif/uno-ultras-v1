@@ -2,9 +2,35 @@
 // UNO ULTRA — Rank / MMR contracts
 // ============================================================
 
+import type { GameMode } from '../constants/game-modes.js';
 import type { RankTier } from '../constants/ranks.js';
 
 export type { RankTier };
+
+export type PlaylistPlayerCount = 2 | 3 | 4;
+export type PlaylistRankKey = `${GameMode}:${PlaylistPlayerCount}p`;
+
+export interface PlaylistRankEntry {
+  readonly mode: GameMode;
+  readonly playerCount: PlaylistPlayerCount;
+  readonly mmr: number;
+  readonly rankTier: RankTier;
+  readonly wins: number;
+  readonly losses: number;
+}
+
+export function normalizePlaylistPlayerCount(raw: number): PlaylistPlayerCount {
+  if (raw <= 2) return 2;
+  if (raw === 3) return 3;
+  return 4;
+}
+
+export function formatPlaylistKey(
+  mode: GameMode,
+  playerCount: number,
+): PlaylistRankKey {
+  return `${mode}:${normalizePlaylistPlayerCount(playerCount)}p`;
+}
 
 export type RankDivision = 'I' | 'II' | 'III' | null;
 

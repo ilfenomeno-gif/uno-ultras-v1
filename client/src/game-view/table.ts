@@ -4,8 +4,11 @@
 
 import type { Room } from 'colyseus.js';
 import {
+  formatPlaylistKey,
+  normalizePlaylistPlayerCount,
   UNO_COLORS,
   type MatchEndedMessage,
+  type PlaylistRankEntry,
   type RankTier,
   type UnoCard,
   type UnoCardKind,
@@ -629,9 +632,34 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
     endedMessage = msg;
     const myReceipt = msg.receipts?.[myId];
     if (myReceipt) {
-      patchProfile({
+      const curProfile = getProfile();
+      const count = normalizePlaylistPlayerCount(
+        myReceipt.playerCount ?? currentState?.players.size ?? 2,
+      );
+      const key = myReceipt.playlistKey ?? formatPlaylistKey('uno', count);
+      const prev = curProfile?.playlistRanks?.[key];
+      const nextEntry: PlaylistRankEntry = {
+        mode: 'uno',
+        playerCount: count,
         mmr: myReceipt.mmrAfter,
         rankTier: myReceipt.rankAfter as RankTier,
+        wins: (prev?.wins ?? 0) + (myReceipt.won ? 1 : 0),
+        losses: (prev?.losses ?? 0) + (myReceipt.won ? 0 : 1),
+      };
+      const mergedPlaylists: Record<string, PlaylistRankEntry> = {
+        ...(curProfile?.playlistRanks ?? {}),
+        [key]: nextEntry,
+      };
+      const peakMmr = Math.max(
+        myReceipt.mmrAfter,
+        ...Object.values(mergedPlaylists).map((e) => e.mmr),
+      );
+      const peakEntry =
+        Object.values(mergedPlaylists).find((e) => e.mmr === peakMmr) ?? nextEntry;
+      patchProfile({
+        mmr: peakMmr,
+        rankTier: peakEntry.rankTier,
+        playlistRanks: mergedPlaylists,
         vcard: myReceipt.vcardBalanceAfter,
         battleCardLevel: myReceipt.battleCardLevelAfter,
       });

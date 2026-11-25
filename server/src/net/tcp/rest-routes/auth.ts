@@ -7,6 +7,7 @@ import {
   LoginPayloadSchema,
   RegisterPayloadSchema,
   type PlayerProfile,
+  type PlaylistRankEntry,
   type RankTier,
 } from '@uno/shared';
 import { hashPassword, verifyPassword } from '../../../auth/password-hasher.js';
@@ -20,6 +21,7 @@ import {
   rotateRefreshToken,
   setRefreshCookie,
 } from '../../../auth/session-manager.js';
+import { listPlayerPlaylistRanks } from '../../../persistence/postgres/repositories/playlist-ranks.js';
 import {
   createPlayer,
   findPlayerById,
@@ -37,7 +39,10 @@ export const authRouter = Router();
 const loginLimiter = createRateLimiter({ scope: 'login', max: 10, windowSeconds: 60 });
 const registerLimiter = createRateLimiter({ scope: 'register', max: 5, windowSeconds: 60 });
 
-function toPlayerProfile(row: PlayerRow): PlayerProfile {
+function toPlayerProfile(
+  row: PlayerRow,
+  playlistRanks?: Readonly<Record<string, PlaylistRankEntry>>,
+): PlayerProfile {
   return {
     id: row.id,
     username: row.username,
@@ -46,7 +51,13 @@ function toPlayerProfile(row: PlayerRow): PlayerProfile {
     vcard: row.vcard,
     battleCardLevel: row.battle_card_level,
     createdAt: row.created_at.toISOString(),
+    ...(playlistRanks !== undefined ? { playlistRanks } : {}),
   };
+}
+
+async function buildProfileWithPlaylists(row: PlayerRow): Promise<PlayerProfile> {
+  const playlistRanks = await listPlayerPlaylistRanks(row.id).catch(() => ({}));
+  return toPlayerProfile(row, playlistRanks);
 }
 
 function isPgUniqueViolation(err: unknown): boolean {
@@ -99,7 +110,7 @@ authRouter.post('/register', registerLimiter, async (req, res) => {
 
     res.status(201).json({
       token,
-      profile: toPlayerProfile(created),
+      profile: await buildProfileWithPlaylists(created),
     });
   } catch (err) {
     if (isPgUniqueViolation(err)) {
@@ -146,7 +157,7 @@ authRouter.post('/login', loginLimiter, async (req, res) => {
 
     res.status(200).json({
       token,
-      profile: toPlayerProfile(player),
+      profile: await buildProfileWithPlaylists(player),
     });
   } catch (err) {
     logger.error({ err }, 'Error during user login');
@@ -184,7 +195,7 @@ authRouter.post('/refresh', csrfOriginGuard, async (req, res) => {
 
     res.status(200).json({
       token,
-      profile: toPlayerProfile(player),
+      profile: await buildProfileWithPlaylists(player),
     });
   } catch (err) {
     logger.error({ err }, 'Error refreshing session token');
@@ -237,7 +248,7 @@ authRouter.get('/me', authRequired, async (req, res) => {
     }
 
     res.status(200).json({
-      profile: toPlayerProfile(player),
+      profile: await buildProfileWithPlaylists(player),
     });
   } catch (err) {
     logger.error({ err }, 'Error fetching current player profile');

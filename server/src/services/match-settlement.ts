@@ -3,7 +3,14 @@
 // (Coordina Rank, Match, MMR, Modalità, Sfide, Battle Card & Valute)
 // ============================================================
 
-import { getRankFromMMR, type MatchRewardReceipt } from '@uno/shared';
+import {
+  formatPlaylistKey,
+  GAME_MODES,
+  getRankFromMMR,
+  normalizePlaylistPlayerCount,
+  type GameMode,
+  type MatchRewardReceipt,
+} from '@uno/shared';
 import { logger } from '../config/logger.js';
 import { settleRankedMatchForPlayers } from '../matchmaking/mmr.js';
 import { addBattleCardXp } from '../persistence/postgres/repositories/battle-card.js';
@@ -12,9 +19,9 @@ import {
   recordFinishedMatch,
   type MatchParticipantRecord,
 } from '../persistence/postgres/repositories/matches.js';
+import { getPlayerPlaylistRank } from '../persistence/postgres/repositories/playlist-ranks.js';
 import { findPlayerById } from '../persistence/postgres/repositories/players.js';
 import { applyBalanceDelta } from '../persistence/postgres/repositories/transactions.js';
-import { updateLeaderboardScore } from '../persistence/redis/leaderboard.js';
 import { metrics } from '../observability/metrics.js';
 
 export interface FinishedParticipantInput {
@@ -31,6 +38,7 @@ export interface SettleFinishedMatchInput {
   readonly matchId: string;
   readonly mode: string;
   readonly variant?: string;
+  readonly playerCount?: number;
   readonly isRanked: boolean;
   readonly winnerId: string;
   readonly turnCount: number;
@@ -64,6 +72,13 @@ export async function settleFinishedMatchWithReceipts(
   const receipts: Record<string, MatchRewardReceipt> = {};
   const variant = input.variant ?? 'standard';
   const modeMultiplier = resolveModeMultiplier(input.mode, input.isRanked);
+  const resolvedMode: GameMode = (GAME_MODES as readonly string[]).includes(input.mode)
+    ? (input.mode as GameMode)
+    : 'uno';
+  const bucketCount = normalizePlaylistPlayerCount(
+    input.playerCount ?? input.participants.length,
+  );
+  const playlistKey = formatPlaylistKey(resolvedMode, bucketCount);
 
   try {
     const rankedHumans = new Map<
@@ -74,13 +89,16 @@ export async function settleFinishedMatchWithReceipts(
     for (const p of input.participants) {
       if (p.isBot || !UUID_RE.test(p.id)) continue;
       try {
-        const row = await findPlayerById(p.id);
+        const [row, playlistRank] = await Promise.all([
+          findPlayerById(p.id),
+          getPlayerPlaylistRank(p.id, resolvedMode, bucketCount),
+        ]);
         if (row) {
           rankedHumans.set(p.id, {
-            mmr: Number(row.mmr),
+            mmr: Number(playlistRank.mmr),
             username: row.username,
             vcard: Number(row.vcard),
-            rankTier: row.rank_tier,
+            rankTier: playlistRank.rankTier,
             battleCardLevel: Number(row.battle_card_level),
           });
         }
@@ -102,6 +120,8 @@ export async function settleFinishedMatchWithReceipts(
       const settlements = await settleRankedMatchForPlayers({
         winnerId: input.winnerId,
         playlistMultiplier: modeMultiplier,
+        mode: resolvedMode,
+        playerCount: bucketCount,
         participants: input.participants.map((p) => {
           const isHuman = !p.isBot && UUID_RE.test(p.id) && rankedHumans.has(p.id);
           return {
@@ -217,17 +237,6 @@ export async function settleFinishedMatchWithReceipts(
         } catch (err) {
           logger.warn({ err, playerId: p.id, matchId: input.matchId }, 'Challenge increment failed');
         }
-
-        try {
-          const rawCount = input.participants.length;
-          const bucketCount = rawCount <= 2 ? 2 : rawCount === 3 ? 3 : 4;
-          await updateLeaderboardScore(p.id, p.username, mmrAfter, {
-            mode: input.mode,
-            playerCount: bucketCount,
-          });
-        } catch (err) {
-          logger.warn({ err, playerId: p.id, matchId: input.matchId }, 'Leaderboard update failed');
-        }
       }
 
       if (isHumanInput) {
@@ -252,6 +261,8 @@ export async function settleFinishedMatchWithReceipts(
           tournamentCreditsEarned,
           challengesProgressed,
           modeMultiplier,
+          playerCount: bucketCount,
+          playlistKey,
         };
       }
     }

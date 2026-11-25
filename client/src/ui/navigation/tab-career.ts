@@ -7,6 +7,7 @@ import {
   getRankInfo,
   LEGACY_TITLES_BY_ID,
   SSL_MMR_THRESHOLD,
+  type PlaylistRankEntry,
 } from '@uno/shared';
 import { announce } from '../../core/aria-live.js';
 import { playEarcon } from '../../core/audio-earcons.js';
@@ -15,6 +16,7 @@ import {
   fetchChallenges,
   fetchInventory,
   fetchMatchReplay,
+  fetchProgressionSnapshot,
 } from '../../net/tcp/rest-client.js';
 import {
   getEconomySnapshot,
@@ -70,6 +72,7 @@ export function createCareerView(): HTMLElement {
   let modeStats: CareerModeStat[] = [];
   let recentMatches: RecentMatchItem[] = [];
   let specialCardsPlayed = 0;
+  let playlistRanks: Readonly<Record<string, PlaylistRankEntry>> = profile?.playlistRanks ?? {};
 
   const layout = document.createElement('div');
   layout.className = 'career-layout';
@@ -330,7 +333,38 @@ export function createCareerView(): HTMLElement {
       }
     }
 
-    statsCol.append(head, kpiGrid, breakdownHead, modeList);
+    const playlistHead = document.createElement('div');
+    playlistHead.className = 'career-sub-heading';
+    playlistHead.textContent = 'GRADI INDIPENDENTI PER MODALITÀ & FORMATO';
+
+    const playlistList = document.createElement('div');
+    playlistList.className = 'career-mode-list';
+    const playlistEntries = Object.values(playlistRanks).sort(
+      (a, b) => b.mmr - a.mmr || a.mode.localeCompare(b.mode) || a.playerCount - b.playerCount,
+    );
+    if (playlistEntries.length === 0) {
+      const emptyPl = document.createElement('div');
+      emptyPl.className = 'career-empty-note';
+      emptyPl.textContent =
+        'Ogni combinazione Modalità × Formato (1v1, 3G, 4G) parte da Bronze I (400 MMR).';
+      playlistList.appendChild(emptyPl);
+    } else {
+      for (const pl of playlistEntries) {
+        const plInfo = getRankInfo(pl.mmr);
+        const row = document.createElement('div');
+        row.className = 'career-mode-row';
+        const left = document.createElement('strong');
+        const fmt = pl.playerCount === 2 ? '1v1' : `${pl.playerCount}G`;
+        left.textContent = `${pl.mode.toUpperCase()} · ${fmt}`;
+        const right = document.createElement('span');
+        right.style.color = plInfo.colorHex;
+        right.textContent = `${pl.rankTier} · ${pl.mmr} MMR (${pl.wins}V/${pl.losses}S)`;
+        row.append(left, right);
+        playlistList.appendChild(row);
+      }
+    }
+
+    statsCol.append(head, kpiGrid, breakdownHead, modeList, playlistHead, playlistList);
   };
 
   const renderHistory = (): void => {
@@ -446,6 +480,15 @@ export function createCareerView(): HTMLElement {
       }
       specialCardsPlayed = sum;
       renderStats();
+    })
+    .catch(() => {});
+
+  void fetchProgressionSnapshot()
+    .then((snap) => {
+      if (snap.playlistRanks) {
+        playlistRanks = snap.playlistRanks;
+        renderStats();
+      }
     })
     .catch(() => {});
 

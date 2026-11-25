@@ -27,9 +27,13 @@ const VARIANT_LABELS: ReadonlyArray<{ id: MatchVariant; label: string }> = [
 
 export function createLauncherPanel(
   initial: LauncherConfig,
-  onLaunch: (config: LauncherConfig) => Promise<void> | void
+  onLaunch: (config: LauncherConfig) => Promise<void> | void,
+  onChange?: (config: LauncherConfig) => void
 ): HTMLElement {
   const state: LauncherConfig = { variant: 'standard', ...initial };
+  const notifyChange = (): void => {
+    onChange?.({ ...state });
+  };
 
   const panel = document.createElement('aside');
   panel.className = 'launcher-panel glass-panel';
@@ -47,6 +51,7 @@ export function createLauncherPanel(
   const select = createModeSelector(state.mode, (mode) => {
     state.mode = mode;
     variantField.style.display = mode === 'uno' ? '' : 'none';
+    notifyChange();
   });
   modeField.append(modeLabel, select);
 
@@ -68,6 +73,7 @@ export function createLauncherPanel(
   }
   variantSelect.addEventListener('change', () => {
     state.variant = variantSelect.value as MatchVariant;
+    notifyChange();
   });
   variantField.append(variantLabel, variantSelect);
 
@@ -79,6 +85,7 @@ export function createLauncherPanel(
   countLabel.textContent = 'Giocatori';
   const countRow = createPlayerCountSelector(state.playerCount, (count) => {
     state.playerCount = count;
+    notifyChange();
   });
   countField.append(countLabel, countRow);
 
@@ -90,6 +97,7 @@ export function createLauncherPanel(
   rankedLabel.textContent = 'Classificata (MMR)';
   const rankedBtn = createRankedToggle(state.ranked, (ranked) => {
     state.ranked = ranked;
+    notifyChange();
   });
   rankedRow.append(rankedLabel, rankedBtn);
 

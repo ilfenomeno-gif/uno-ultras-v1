@@ -4,6 +4,7 @@
 
 import type { RankTier } from '../constants/ranks.js';
 import type { UnoCard } from './card.js';
+import type { PlaylistRankEntry } from './rank.js';
 
 /** Profilo persistente (server-side). */
 export interface PlayerProfile {
@@ -14,6 +15,7 @@ export interface PlayerProfile {
   vcard: number;
   battleCardLevel: number;
   createdAt: string; // ISO 8601
+  playlistRanks?: Readonly<Record<string, PlaylistRankEntry>>;
 }
 
 /** Giocatore all'interno di una stanza. */

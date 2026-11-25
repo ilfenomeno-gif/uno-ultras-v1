@@ -4,6 +4,17 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
+## Sessione 2026-11-25 (Parte 6) — Gradi Indipendenti per Modalità × Giocatori (`1v1` / `3G` / `4G`), Fix Amici/Inviti & Avvio Partita
+
+- **Obiettivo**: separare completamente Rank e MMR per ogni singola combinazione `Modalità × Numero Giocatori` (`1v1`, `3 Giocatori`, `4 Giocatori`) su tutte le `8` modalità, risolvere gli errori di aggiunta amici/inviti in stanza e l'errore `"Impossibile avviare la partita. Riprova."`, e riavviare lo stack auto-ricaricante sempre attivo.
+- **Stato Lavori**:
+  - `[x]` Contratti condivisi (`PlaylistPlayerCount`, `PlaylistRankEntry`, `normalizePlaylistPlayerCount`, `formatPlaylistKey`) in `shared/src/types/rank.ts`, `shared/src/types/player.ts` e `shared/src/protocol/messages.ts`.
+  - `[x]` Persistenza indipendente per `(player_id, mode, player_count)` con partenza isolata da `0 MMR (Bronze I)` in `server/src/persistence/postgres/migrations/0007_playlist_ranks.sql`, `server/src/persistence/postgres/repositories/playlist-ranks.ts` e `dev-store.ts`; aggiornamento mirato ELO/Leaderboard per playlist (`mmr.ts`, `match-settlement.ts`, `leaderboard.ts`, `progression.ts`, `auth.ts`).
+  - `[x]` Client: selettore launcher + HUD dinamico per playlist in `tab-play.ts` e `launcher.ts`, dettaglio per formato in `tab-career.ts`, `sandbox-modal.ts` e `table.ts`, flusso Amici/Inviti con pulsante `Unisciti` in `social-drawer.ts`, gestione errori leggibile in `rest-client.ts` / `colyseus-client.ts` e avvio immediato partita in `main.ts`.
+  - `[x]` Nuovo test di isolamento `progression-mcp.test.ts` + `npm run ci` verde (**27 suite Vitest / 166 test passati**: shared `74`, server `41`, client `51`; `0` errori ESLint/TS) + SHA-256 `contenuto-game.md` intatto (`83CAE3C057B35C22B460CC6F61BCF11AA355D1DB5F9EB4F2EC40517B2A1BD4D9`).
+
+---
+
 ## Sessione 2026-11-25 (Parte 5) — QA Live E2E, Persistenza Dev Offline, Multiplayer `remilk12` vs `aragos` & Scalata Pure-Gameplay a SSL
 
 - **Obiettivo**: verificare tutte le meccaniche/sotto-meccaniche e schede live (login, amicizie, inviti, lobby WebSocket Colyseus, varianti UNO, 7 mini-giochi, ELO, Battle Card, Sfide, Shop, Casse, Tornei, Carriera, Replay, Top 100 e Targhette), testare il multiplayer `remilk12` vs `aragos`, misurare la scala difficoltà dei bot per rank e portare `remilk12` a **SSL (`1.600+ MMR`)** con gameplay puro su tutte le `8` modalità.

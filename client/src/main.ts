@@ -32,7 +32,7 @@ import { openMiniGameSandboxModal } from './ui/minigames/sandbox-modal.js';
 import { mountGameView } from './game-view/table.js';
 import { initClientEnvironment } from './core/bootstrap.js';
 import { getProfile, isAuthenticated } from './state/profile-store.js';
-import { colyseus, enterMatch, signOut } from './net/connection-manager.js';
+import { colyseus, enterMatch, joinMatchById, signOut } from './net/connection-manager.js';
 
 function bootstrap(): void {
   const appRoot = document.getElementById('app');
@@ -49,7 +49,13 @@ function bootstrap(): void {
 
   const router = new Router();
   const newsTicker = new NewsTicker();
-  const socialDrawer = new SocialDrawer();
+  const socialDrawer = new SocialDrawer({
+    onJoinInvite: async (roomId) => {
+      await joinMatchById(roomId);
+      socialDrawer.close();
+      router.navigate('game');
+    },
+  });
   document.body.append(socialDrawer.backdrop, socialDrawer.drawer);
 
   let unmountActiveView: (() => void) | null = null;
@@ -67,15 +73,15 @@ function bootstrap(): void {
       });
       return;
     }
-    const maxPlayers = cfg.variant === 'team' ? 4 : cfg.playerCount === 1 ? 4 : cfg.playerCount;
-    await enterMatch({
+    const maxPlayers = cfg.variant === 'team' ? 4 : cfg.playerCount === 1 ? 2 : cfg.playerCount;
+    const room = await enterMatch({
       mode: cfg.mode,
       maxPlayers,
       ranked: cfg.ranked,
       fillWithBots: true,
       ...(cfg.variant !== undefined ? { variant: cfg.variant } : {}),
     });
-    if (cfg.playerCount === 1) {
+    if (room.state?.phase === 'lobby') {
       colyseus.startMatch();
     }
     router.navigate('game');

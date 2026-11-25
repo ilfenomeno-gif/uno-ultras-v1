@@ -92,7 +92,7 @@ export async function updateLeaderboardScore(
   playerId: string,
   username: string,
   mmr: number,
-  bucket?: { mode?: string; playerCount?: number },
+  bucket?: { mode?: string; playerCount?: number; globalMmr?: number },
 ): Promise<void> {
   const memKey =
     bucket?.mode && bucket.playerCount
@@ -104,13 +104,19 @@ export async function updateLeaderboardScore(
     if (oldest) memoryScores.delete(oldest);
   }
   memoryScores.set(memKey, { username, mmr });
-  memoryScores.set(`global:${playerId}`, { username, mmr });
+  const prevGlobal = memoryScores.get(`global:${playerId}`)?.mmr ?? 0;
+  const globalScore = Math.max(prevGlobal, bucket?.globalMmr ?? mmr);
+  memoryScores.set(`global:${playerId}`, { username, mmr: globalScore });
 
   if (env.NODE_ENV !== 'production') {
     try {
       updateDevState((state) => {
         const globalMap = (state.leaderboards['global'] ??= {});
-        globalMap[playerId] = { username, mmr };
+        const curGlobal = globalMap[playerId]?.mmr ?? 0;
+        globalMap[playerId] = {
+          username,
+          mmr: Math.max(curGlobal, bucket?.globalMmr ?? mmr),
+        };
         if (bucket?.mode && bucket.playerCount) {
           const bKey = `${bucket.mode}:${bucket.playerCount}p`;
           const bMap = (state.leaderboards[bKey] ??= {});
@@ -125,7 +131,10 @@ export async function updateLeaderboardScore(
   try {
     const client = getRedisClient();
     if (client.isOpen) {
-      await client.zAdd(LEADERBOARD_KEY, { score: mmr, value: `${playerId}|${username}` });
+      await client.zAdd(LEADERBOARD_KEY, {
+        score: globalScore,
+        value: `${playerId}|${username}`,
+      });
       if (bucket?.mode && bucket.playerCount) {
         await client.zAdd(leaderboardKeyForBucket(bucket.mode, bucket.playerCount), {
           score: mmr,

@@ -22,18 +22,24 @@ import { openProfileModal } from './profile-view.js';
 
 type SocialTab = 'amici' | 'notifiche' | 'bloccati';
 
+export interface SocialDrawerOptions {
+  onJoinInvite?: (roomId: string) => Promise<void>;
+}
+
 export class SocialDrawer {
   readonly backdrop: HTMLElement;
   readonly drawer: HTMLElement;
   private readonly body: HTMLElement;
   private readonly userBanner: HTMLElement;
   private readonly feedbackEl: HTMLElement;
+  private readonly onJoinInvite: ((roomId: string) => Promise<void>) | undefined;
   private activeTab: SocialTab = 'amici';
   private openState = false;
   private friendsData: FriendsListResponse | null = null;
   private notifications: NotificationItem[] = [];
 
-  constructor() {
+  constructor(options?: SocialDrawerOptions) {
+    this.onJoinInvite = options?.onJoinInvite;
     this.backdrop = document.createElement('div');
     this.backdrop.className = 'social-drawer-backdrop';
     this.backdrop.addEventListener('click', () => this.close());
@@ -275,8 +281,12 @@ export class SocialDrawer {
       form.addEventListener('submit', async (ev) => {
         ev.preventDefault();
         const target = input.value.trim();
-        if (!target) return;
+        if (target.length < 3 || target.length > 20) {
+          this.setFeedback('Inserisci un nome utente valido (3-20 caratteri).', true);
+          return;
+        }
         submit.disabled = true;
+        this.setFeedback(`Invio richiesta a ${target}…`);
         try {
           const res = await sendFriendRequest(target);
           this.setFeedback(
@@ -285,7 +295,13 @@ export class SocialDrawer {
               : `Richiesta inviata a ${target}`
           );
           input.value = '';
-          await this.refresh();
+          const [friends, notifs] = await Promise.all([
+            fetchFriends(),
+            fetchNotifications(),
+          ]);
+          this.friendsData = friends;
+          this.notifications = notifs.items;
+          this.renderBody();
         } catch (err) {
           this.setFeedback(
             err instanceof Error ? err.message : 'Richiesta fallita',
@@ -372,6 +388,35 @@ export class SocialDrawer {
         info.className = 'social-row-info';
         info.textContent = label;
 
+        const actions = document.createElement('div');
+        actions.className = 'social-row-actions';
+
+        const inviteRoomId =
+          n.type === 'party_invite' && typeof n.payload['roomId'] === 'string'
+            ? n.payload['roomId']
+            : null;
+        if (inviteRoomId && inviteRoomId !== 'lobby' && this.onJoinInvite) {
+          const joinBtn = document.createElement('button');
+          joinBtn.type = 'button';
+          joinBtn.className = 'social-mini-btn social-mini-btn--gold';
+          joinBtn.textContent = 'Unisciti';
+          joinBtn.addEventListener('click', async () => {
+            joinBtn.disabled = true;
+            try {
+              await markNotificationRead(n.id);
+              await this.onJoinInvite?.(inviteRoomId);
+            } catch (err) {
+              this.setFeedback(
+                err instanceof Error ? err.message : 'Ingresso nella stanza fallito',
+                true
+              );
+            } finally {
+              joinBtn.disabled = false;
+            }
+          });
+          actions.appendChild(joinBtn);
+        }
+
         const markBtn = document.createElement('button');
         markBtn.type = 'button';
         markBtn.className = 'social-mini-btn';
@@ -380,8 +425,9 @@ export class SocialDrawer {
           await markNotificationRead(n.id);
           await this.refresh();
         });
+        actions.appendChild(markBtn);
 
-        row.append(info, markBtn);
+        row.append(info, actions);
         this.body.appendChild(row);
       }
       return;
