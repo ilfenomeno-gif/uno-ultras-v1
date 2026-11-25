@@ -6,10 +6,13 @@ import {
   GAME_MODES,
   getRankFromMMR,
   pickPrestigiousTitleForMMR,
-  REALISTIC_BOT_PROFILES,
   type GameMode,
 } from '@uno/shared';
 import { env } from '../../config/env.js';
+import {
+  buildFullRankedLadder,
+  type LadderEntryLike,
+} from '../../services/bot-ladder.js';
 import { query } from '../postgres/client.js';
 import { readDevState, updateDevState } from '../postgres/dev-store.js';
 import { getRedisClient } from './client.js';
@@ -19,73 +22,13 @@ const LEADERBOARD_KEY = 'leaderboard:mmr';
 export type LeaderboardPlayerCount = 2 | 3 | 4;
 export type LeaderboardMode = 'global' | GameMode;
 
-export interface LeaderboardEntry {
-  rank: number;
-  playerId: string;
-  username: string;
-  mmr: number;
-  rankTier: string;
-  wins: number;
-  winRate: number;
-  title: string;
-  titleColor?: string;
-  isBot?: boolean;
-}
+export type LeaderboardEntry = LadderEntryLike;
 
 const memoryScores = new Map<string, { username: string; mmr: number }>();
 
 function leaderboardKeyForBucket(mode?: string, playerCount?: number): string {
   if (!mode || !playerCount) return LEADERBOARD_KEY;
   return `${LEADERBOARD_KEY}:${mode}:${playerCount}p`;
-}
-
-function deterministicHash(str: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return Math.abs(h >>> 0);
-}
-
-function generateBucketContenders(
-  mode: LeaderboardMode,
-  playerCount: LeaderboardPlayerCount | 'all',
-  excludeNames: ReadonlySet<string>,
-): LeaderboardEntry[] {
-  const seedOffset = deterministicHash(`${mode}:${playerCount}`);
-  const out: LeaderboardEntry[] = [];
-  const totalBots = REALISTIC_BOT_PROFILES.length;
-
-  for (let idx = 0; idx < totalBots + 10 && out.length < 100; idx++) {
-    const bot = REALISTIC_BOT_PROFILES[(idx + (seedOffset % 17)) % totalBots]!;
-    if (excludeNames.has(bot.name.toLowerCase())) continue;
-
-    // Higher ranks keep higher MMR and progressively more prestigious titles
-    const curveMmr = Math.round(bot.baseMmr - idx * 5 + ((seedOffset + idx * 13) % 19) - 9);
-    const mmr = Math.max(450, Math.min(2250, curveMmr));
-    const wins = Math.max(12, Math.round((mmr - 200) / 5.2 + ((seedOffset + idx) % 14)));
-    const winRate = Math.max(49, Math.min(84, Math.round(52 + (mmr - 450) / 58)));
-    const pickedTitle = pickPrestigiousTitleForMMR(
-      mmr,
-      mode === 'global' ? undefined : mode,
-      idx + seedOffset,
-    );
-
-    out.push({
-      rank: 0,
-      playerId: `s1_${mode}_${playerCount}p_${idx + 1}`,
-      username: bot.name,
-      mmr,
-      rankTier: getRankFromMMR(mmr),
-      wins,
-      winRate,
-      title: pickedTitle.name,
-      titleColor: pickedTitle.color,
-      isBot: true,
-    });
-  }
-  return out;
 }
 
 export async function updateLeaderboardScore(
@@ -147,11 +90,11 @@ export async function updateLeaderboardScore(
   }
 }
 
-export async function getTopLeaderboard(
-  limit = 100,
-  opts?: { mode?: LeaderboardMode; playerCount?: LeaderboardPlayerCount },
-): Promise<LeaderboardEntry[]> {
-  const safeLimit = Math.max(1, Math.min(100, limit));
+export async function getFullRankedLadder(opts?: {
+  mode?: LeaderboardMode;
+  playerCount?: LeaderboardPlayerCount;
+  simulate?: boolean;
+}): Promise<LeaderboardEntry[]> {
   const isGlobal = !opts?.mode || opts.mode === 'global';
   const mode: LeaderboardMode = isGlobal
     ? 'global'
@@ -170,7 +113,7 @@ export async function getTopLeaderboard(
         !isGlobal && opts?.playerCount
           ? leaderboardKeyForBucket(mode, playerCount)
           : LEADERBOARD_KEY;
-      const items = await client.zRangeWithScores(key, 0, safeLimit - 1, { REV: true });
+      const items = await client.zRangeWithScores(key, 0, 299, { REV: true });
       for (const entry of items) {
         const [playerId = '', username = 'Unknown'] = entry.value.split('|');
         const mmr = Math.round(entry.score);
@@ -203,8 +146,7 @@ export async function getTopLeaderboard(
            FROM players
           WHERE deleted_at IS NULL
           ORDER BY mmr DESC, username ASC
-          LIMIT $1`,
-        [safeLimit],
+          LIMIT 300`,
       );
       for (const r of res.rows) {
         if (!seenNames.has(r.username.toLowerCase())) {
@@ -227,7 +169,8 @@ export async function getTopLeaderboard(
       }
     } catch {
       const targetBucket = isGlobal ? 'global' : `${mode}:${playerCount}p`;
-      const devBucket = env.NODE_ENV !== 'production' ? readDevState().leaderboards[targetBucket] : undefined;
+      const devBucket =
+        env.NODE_ENV !== 'production' ? readDevState().leaderboards[targetBucket] : undefined;
       if (devBucket) {
         for (const [k, info] of Object.entries(devBucket)) {
           if (!seenNames.has(info.username.toLowerCase())) {
@@ -272,14 +215,19 @@ export async function getTopLeaderboard(
     }
   }
 
-  return [
-    ...realEntries,
-    ...generateBucketContenders(mode, isGlobal ? 'all' : playerCount, seenNames),
-  ]
-    .sort((a, b) => b.mmr - a.mmr || a.username.localeCompare(b.username))
-    .slice(0, safeLimit)
-    .map((entry, idx) => ({
-      ...entry,
-      rank: idx + 1,
-    }));
+  return buildFullRankedLadder({
+    mode,
+    ...(isGlobal ? {} : { playerCount }),
+    realEntries,
+    ...(opts?.simulate !== undefined ? { simulate: opts.simulate } : {}),
+  });
+}
+
+export async function getTopLeaderboard(
+  limit = 100,
+  opts?: { mode?: LeaderboardMode; playerCount?: LeaderboardPlayerCount },
+): Promise<LeaderboardEntry[]> {
+  const safeLimit = Math.max(1, Math.min(100, limit));
+  const full = await getFullRankedLadder(opts);
+  return full.slice(0, safeLimit);
 }

@@ -328,6 +328,19 @@ export interface TopLeaderboardEntry {
   isBot?: boolean;
 }
 
+export interface MatchedRivalBot {
+  botId: string;
+  rank: number;
+  username: string;
+  mmr: number;
+  rankTier: string;
+  title: string;
+  titleColor: string;
+  avatarId: string;
+  frameId: string;
+  cardBackId: string;
+}
+
 export async function fetchTopLeaderboard(
   limit = 100,
   opts?: { mode?: string; players?: 2 | 3 | 4 },
@@ -340,6 +353,30 @@ export async function fetchTopLeaderboard(
   if (opts?.mode) qs.set('mode', opts.mode);
   if (opts?.players) qs.set('players', String(opts.players));
   return requestJson(`/leaderboard/top?${qs.toString()}`, { method: 'GET' });
+}
+
+export async function fetchMatchedRivals(
+  mode: string,
+  players: 2 | 3 | 4,
+  count: number,
+): Promise<{
+  mode: string;
+  playerCount: number;
+  playerMmr: number;
+  inTop100: boolean;
+  playerRank: number;
+  window: { min: number; max: number } | null;
+  rivals: readonly MatchedRivalBot[];
+}> {
+  const qs = new URLSearchParams({
+    mode,
+    players: String(players),
+    count: String(count),
+  });
+  return requestJson(`/leaderboard/rivals?${qs.toString()}`, {
+    method: 'GET',
+    headers: authHeaders(),
+  });
 }
 
 export async function fetchCareerSummary(): Promise<{
@@ -452,6 +489,8 @@ export async function settleMiniGameMatch(payload: {
   turnCount: number;
   durationSec: number;
   cardsPlayed?: number;
+  botIds?: readonly string[];
+  botNames?: readonly string[];
 }): Promise<{ receipt: MatchRewardReceipt }> {
   return postJson('/progression/settle-match', payload, true);
 }

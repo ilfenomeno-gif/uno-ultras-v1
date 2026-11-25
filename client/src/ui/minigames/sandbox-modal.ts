@@ -15,6 +15,7 @@ import { playEarcon } from '../../core/audio-earcons.js';
 import { hasBlockedModifier } from '../../core/keyboard-nav.js';
 import {
   fetchInventory,
+  fetchMatchedRivals,
   fetchTopLeaderboard,
   settleMiniGameMatch,
 } from '../../net/tcp/rest-client.js';
@@ -34,6 +35,7 @@ import {
   formatMiniGameActionLabel,
   formatScoreSummary,
   formatStandardCardLabel,
+  mapMatchedRivalsToMiniGameBots,
   pickMiniGameBotProfiles,
   resolveMiniGameTitleDisplay,
   type MiniGameActionLike,
@@ -736,6 +738,10 @@ export function openMiniGameSandboxModal(
     if (!isAuthenticated()) return;
 
     const playlistCount: 2 | 3 | 4 = totalSeats === 3 ? 3 : totalSeats >= 4 ? 4 : 2;
+    const matchedBotIds = botProfiles
+      .map((b) => b.botId)
+      .filter((id): id is string => Boolean(id));
+    const matchedBotNames = botProfiles.map((b) => b.name);
     void settleMiniGameMatch({
       matchId: `${mode}_${matchSeed}`,
       mode,
@@ -748,6 +754,8 @@ export function openMiniGameSandboxModal(
       turnCount: Math.max(1, turnsPlayed),
       durationSec,
       cardsPlayed: Math.max(1, turnsPlayed),
+      ...(matchedBotIds.length > 0 ? { botIds: matchedBotIds } : {}),
+      ...(matchedBotNames.length > 0 ? { botNames: matchedBotNames } : {}),
     })
       .then(({ receipt }) => {
         lastReceipt = receipt;
@@ -998,6 +1006,17 @@ export function openMiniGameSandboxModal(
         selectedCardId = null;
         playEarcon('confirm');
         paint();
+        if (isAuthenticated()) {
+          void fetchMatchedRivals(mode, seatBucket, totalSeats - 1)
+            .then((res) => {
+              if (closed || res.rivals.length === 0 || turnsPlayed > 0 || settledThisMatch) return;
+              botProfiles = mapMatchedRivalsToMiniGameBots(res.rivals);
+              players = ['Tu', ...botProfiles.map((b) => b.name)];
+              state = engine.createInitialState(`local_${mode}_${matchSeed}`, players, matchSeed);
+              paint();
+            })
+            .catch(() => undefined);
+        }
       });
 
       const lobbyBtn = document.createElement('button');
@@ -1073,6 +1092,19 @@ export function openMiniGameSandboxModal(
         if (found) {
           myRankTier = found.rankTier;
           myMmr = found.mmr;
+          paint();
+        }
+      })
+      .catch(() => undefined);
+
+    void fetchMatchedRivals(mode, seatBucket, totalSeats - 1)
+      .then((res) => {
+        if (closed || res.rivals.length === 0) return;
+        myRankTier = res.playerMmr ? botProfiles[0]?.rankTier ?? myRankTier : myRankTier;
+        if (turnsPlayed === 0 && !settledThisMatch) {
+          botProfiles = mapMatchedRivalsToMiniGameBots(res.rivals);
+          players = ['Tu', ...botProfiles.map((b) => b.name)];
+          state = engine.createInitialState(`local_${mode}_${matchSeed}`, players, matchSeed);
           paint();
         }
       })

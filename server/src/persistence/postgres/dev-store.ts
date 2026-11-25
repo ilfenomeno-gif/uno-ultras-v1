@@ -118,6 +118,22 @@ export interface DevMatchmakingBanRecord {
   lastReason: string;
 }
 
+export interface DevBotLadderEntry {
+  botId: string;
+  username: string;
+  mmr: number;
+  wins: number;
+  losses: number;
+  avatarId: string;
+  frameId: string;
+  cardBackId: string;
+}
+
+export interface DevBotLadderBucket {
+  lastSimulatedAtMs: number;
+  bots: Record<string, DevBotLadderEntry>;
+}
+
 export interface DevStateSnapshot {
   tournamentCredits: Record<string, number>;
   loadouts: Record<string, DevLoadout>;
@@ -133,6 +149,7 @@ export interface DevStateSnapshot {
   leaderboards: Record<string, Record<string, { username: string; mmr: number }>>;
   playlistRanks: Record<string, Record<string, DevPlaylistRankRecord>>;
   matchmakingBans: Record<string, DevMatchmakingBanRecord>;
+  botLadders: Record<string, DevBotLadderBucket>;
 }
 
 const TEST_SUFFIX = process.env['VITEST'] ? `-vitest-${process.pid}` : '';
@@ -155,6 +172,7 @@ const EMPTY_STATE = (): DevStateSnapshot => ({
   leaderboards: {},
   playlistRanks: {},
   matchmakingBans: {},
+  botLadders: {},
 });
 
 export function isDbUnavailableError(err: unknown): boolean {
@@ -196,6 +214,7 @@ function loadDevStateFromDisk(): DevStateSnapshot {
       leaderboards: raw.leaderboards ?? {},
       playlistRanks: raw.playlistRanks ?? {},
       matchmakingBans: raw.matchmakingBans ?? {},
+      botLadders: raw.botLadders ?? {},
     };
   } catch {
     return base;

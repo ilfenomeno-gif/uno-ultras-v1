@@ -118,12 +118,24 @@ export function createTop100View(): HTMLElement {
           res.entries.length > 0
             ? res.entries
             : buildFallbackTop100Entries(reqScope, reqPlayers);
+        const myVisible = profile
+          ? entries.find(
+              (e) =>
+                e.playerId === profile.id ||
+                e.username.toLowerCase() === profile.username.toLowerCase(),
+            )
+          : undefined;
+        const tailNote = myVisible
+          ? ` · Tu sei #${myVisible.rank} (Rivali ±5 evidenziati)`
+          : profile
+            ? ' · Fuori Top 100 (#101+): in partita affronti rivali vicini al tuo MMR'
+            : '';
         if (reqScope === 'global') {
-          statusLine.textContent = `Classifica Top 100 Globale · Tutte le modalità (${entries.length} giocatori)`;
+          statusLine.textContent = `Classifica Top 100 Globale · Tutte le modalità (${entries.length} giocatori)${tailNote}`;
         } else {
           const modeMeta = TOP100_MODES.find((m) => m.id === reqScope);
           const pMeta = TOP100_PLAYER_COUNTS.find((p) => p.count === reqPlayers);
-          statusLine.textContent = `Classifica ${modeMeta?.label ?? reqScope} · ${pMeta?.label ?? `${reqPlayers} Giocatori`} (${entries.length} giocatori)`;
+          statusLine.textContent = `Classifica ${modeMeta?.label ?? reqScope} · ${pMeta?.label ?? `${reqPlayers} Giocatori`} (${entries.length} giocatori)${tailNote}`;
         }
       }
     } catch {
@@ -277,10 +289,26 @@ export function createTop100View(): HTMLElement {
       return;
     }
 
+    const myVisible = profile
+      ? entries.find(
+          (e) =>
+            e.playerId === profile.id ||
+            e.username.toLowerCase() === profile.username.toLowerCase(),
+        )
+      : undefined;
+
     for (const entry of entries) {
       const row = document.createElement('div');
-      const isMe = profile && entry.playerId === profile.id;
-      row.className = `top100-row${isMe ? ' is-me' : ''}`;
+      const isMe =
+        Boolean(profile) &&
+        (entry.playerId === profile!.id ||
+          entry.username.toLowerCase() === profile!.username.toLowerCase());
+      const isRival =
+        !isMe &&
+        Boolean(myVisible) &&
+        Boolean(entry.isBot) &&
+        Math.abs(entry.rank - myVisible!.rank) <= 5;
+      row.className = `top100-row${isMe ? ' is-me' : ''}${isRival ? ' is-rival-window' : ''}`;
       const rInfo = getRankInfo(entry.mmr);
 
       const c1 = document.createElement('strong');
@@ -290,6 +318,12 @@ export function createTop100View(): HTMLElement {
       const c2 = document.createElement('span');
       c2.className = 'top100-player-name';
       c2.textContent = entry.username;
+      if (isRival) {
+        const rivalPill = document.createElement('span');
+        rivalPill.className = 'top100-rival-pill';
+        rivalPill.textContent = 'RIVALE ±5';
+        c2.appendChild(rivalPill);
+      }
 
       const c3 = document.createElement('span');
       c3.className = 'top100-player-title';

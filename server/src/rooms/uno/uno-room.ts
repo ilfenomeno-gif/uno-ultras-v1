@@ -16,9 +16,7 @@ import {
   getRankFromMMR,
   getThinkDelayMs,
   LEGACY_TITLES_BY_ID,
-  pickPrestigiousTitleForMMR,
   PlayerState,
-  REALISTIC_BOT_PROFILES,
   TCP_CHANNELS,
   UnoRoomState,
   validatePresetForPlayers,
@@ -39,6 +37,7 @@ import {
 } from '../../persistence/postgres/repositories/matchmaking-bans.js';
 import { getPlayerPlaylistRank } from '../../persistence/postgres/repositories/playlist-ranks.js';
 import { RoomActionThrottle } from '../../security/anti-cheat.js';
+import { selectMatchedRivalsSync } from '../../services/bot-ladder.js';
 import { settleFinishedMatchWithReceipts } from '../../services/match-settlement.js';
 import { BaseRoom } from '../base/base-room.js';
 import { presenceService } from '../base/presence.js';
@@ -485,46 +484,64 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
   private startUnoMatch(): void {
     const participants: UnoParticipant[] = [...this.lobbyParticipants.values()];
 
-    if (this.fillWithBots) {
-      let botIdx = 1;
+    if (this.fillWithBots && participants.length < this.targetPlayers) {
       const usedNames = new Set(participants.map((p) => p.username.toLowerCase()));
-      const startBotOffset = Date.now() % REALISTIC_BOT_PROFILES.length;
-      while (participants.length < this.targetPlayers) {
+      const neededBots = this.targetPlayers - participants.length;
+      const anchor = participants[0];
+      const anchorVisual = anchor ? this.participantVisuals.get(anchor.id) : undefined;
+      const normCount: 2 | 3 | 4 =
+        this.targetPlayers <= 2 ? 2 : this.targetPlayers === 3 ? 3 : 4;
+      const matched = selectMatchedRivalsSync({
+        playerId: anchor?.id ?? 'guest',
+        username: anchor?.username ?? 'Guest',
+        ...(anchorVisual?.mmr !== undefined ? { playerMmr: anchorVisual.mmr } : {}),
+        mode: 'uno',
+        playerCount: normCount,
+        count: neededBots,
+        excludeNames: usedNames,
+      });
+
+      let botIdx = 1;
+      for (const rival of matched.rivals) {
+        if (participants.length >= this.targetPlayers) break;
         const profile = BOT_PROFILES_ROTATION[(botIdx - 1) % BOT_PROFILES_ROTATION.length] ?? 'STRAT';
-        const botCandidate =
-          REALISTIC_BOT_PROFILES[(startBotOffset + botIdx - 1) % REALISTIC_BOT_PROFILES.length];
-        const botName =
-          botCandidate && !usedNames.has(botCandidate.name.toLowerCase())
-            ? botCandidate.name
-            : `UNO_BOT_${botIdx}`;
-        usedNames.add(botName.toLowerCase());
-        const botId = `bot_${botIdx}`;
-        const botMmr = botCandidate?.baseMmr ?? 1100 + botIdx * 95;
-        const botRankTier = getRankFromMMR(botMmr);
-        const botTitleDef = pickPrestigiousTitleForMMR(botMmr, 'uno', startBotOffset + botIdx);
-        const botAvatar =
-          BOT_AVATAR_POOL[(botIdx + startBotOffset) % BOT_AVATAR_POOL.length] ?? 'avatar_default';
-        const botFrame =
-          botMmr >= 1950
-            ? 'frame_ssl_prism'
-            : botMmr >= 1400
-              ? 'frame_gold_pulse'
-              : 'frame_default';
-        const botCardBack =
-          BOT_CARDBACK_POOL[(botIdx + startBotOffset) % BOT_CARDBACK_POOL.length] ?? 'back_default';
-        this.participantVisuals.set(botId, {
-          avatarId: botAvatar,
-          frameId: botFrame,
-          cardBackId: botCardBack,
-          titleId: botTitleDef.id,
-          rankTier: botRankTier,
-          mmr: botMmr,
-          titleText: botTitleDef.name,
-          titleColor: botTitleDef.color,
+        usedNames.add(rival.username.toLowerCase());
+        this.participantVisuals.set(rival.botId, {
+          avatarId: rival.avatarId,
+          frameId: rival.frameId,
+          cardBackId: rival.cardBackId,
+          titleId: `rival_${rival.rank}`,
+          rankTier: rival.rankTier,
+          mmr: rival.mmr,
+          titleText: rival.title,
+          titleColor: rival.titleColor,
         });
         participants.push({
-          id: botId,
-          username: botName,
+          id: rival.botId,
+          username: rival.username,
+          isBot: true,
+          aiProfile: profile,
+        });
+        botIdx++;
+      }
+
+      while (participants.length < this.targetPlayers) {
+        const profile = BOT_PROFILES_ROTATION[(botIdx - 1) % BOT_PROFILES_ROTATION.length] ?? 'STRAT';
+        const fallbackId = `bot_${botIdx}`;
+        const fallbackName = `UNO_BOT_${botIdx}`;
+        this.participantVisuals.set(fallbackId, {
+          avatarId: BOT_AVATAR_POOL[botIdx % BOT_AVATAR_POOL.length] ?? 'avatar_default',
+          frameId: 'frame_default',
+          cardBackId: BOT_CARDBACK_POOL[botIdx % BOT_CARDBACK_POOL.length] ?? 'back_default',
+          titleId: 't1',
+          rankTier: getRankFromMMR(400),
+          mmr: 400,
+          titleText: 'Principiante',
+          titleColor: '#94a3b8',
+        });
+        participants.push({
+          id: fallbackId,
+          username: fallbackName,
           isBot: true,
           aiProfile: profile,
         });

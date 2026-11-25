@@ -26,6 +26,7 @@ import { getPlayerPlaylistRank } from '../persistence/postgres/repositories/play
 import { findPlayerById } from '../persistence/postgres/repositories/players.js';
 import { applyBalanceDelta } from '../persistence/postgres/repositories/transactions.js';
 import { metrics } from '../observability/metrics.js';
+import { settleBotRivalResult } from './bot-ladder.js';
 
 export interface FinishedParticipantInput {
   readonly id: string;
@@ -160,6 +161,23 @@ export async function settleFinishedMatchWithReceipts(
           ...(s.calibrationBonusMmr !== undefined
             ? { calibrationBonusMmr: s.calibrationBonusMmr }
             : {}),
+        });
+      }
+
+      const rivalBotIds = input.participants.filter((p) => p.isBot).map((p) => p.id);
+      if (rivalBotIds.length > 0) {
+        const refHumanMmr =
+          settlements.length > 0
+            ? Math.round(
+                settlements.reduce((s, r) => s + r.mmrAfter, 0) / settlements.length,
+              )
+            : avgHumanMmr;
+        settleBotRivalResult({
+          botIds: rivalBotIds,
+          winnerId: input.winnerId,
+          humanMmr: refHumanMmr,
+          mode: resolvedMode,
+          playerCount: bucketCount,
         });
       }
     }

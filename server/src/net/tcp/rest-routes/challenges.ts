@@ -16,11 +16,14 @@ import {
   getPlayerCareerSummary,
 } from '../../../persistence/postgres/repositories/matches.js';
 import {
+  getFullRankedLadder,
   getTopLeaderboard,
   type LeaderboardMode,
   type LeaderboardPlayerCount,
 } from '../../../persistence/redis/leaderboard.js';
+import { getPlayerPlaylistRank } from '../../../persistence/postgres/repositories/playlist-ranks.js';
 import { listBotSocialProfilesNearMMR } from '../../../persistence/postgres/repositories/bot-social.js';
+import { selectMatchedRivalsFromLadder } from '../../../services/bot-ladder.js';
 
 export const challengesRouter = Router();
 const claimLimiter = createRateLimiter({ scope: 'challenge_claim', max: 20, windowSeconds: 60 });
@@ -106,4 +109,43 @@ leaderboardRouter.get('/bots', async (req, res) => {
   const mmr = Number(req.query['mmr'] ?? 800);
   const bots = await listBotSocialProfilesNearMMR(Number.isFinite(mmr) ? mmr : 800);
   res.status(200).json({ bots });
+});
+
+leaderboardRouter.get('/rivals', authRequired, async (req, res) => {
+  const rawMode = String(req.query['mode'] ?? 'uno');
+  const mode: GameMode = (GAME_MODES as readonly string[]).includes(rawMode)
+    ? (rawMode as GameMode)
+    : 'uno';
+  const rawPlayers = Number(req.query['players'] ?? 4);
+  const playerCount: LeaderboardPlayerCount =
+    rawPlayers === 2 || rawPlayers === 3 || rawPlayers === 4 ? rawPlayers : 4;
+  const rawCount = Number(req.query['count'] ?? Math.max(1, playerCount - 1));
+  const count = Math.max(1, Math.min(3, Number.isFinite(rawCount) ? rawCount : 1));
+
+  const playerId = req.user!.sub;
+  const username = req.user!.username;
+
+  try {
+    const [rankEntry, ladder] = await Promise.all([
+      getPlayerPlaylistRank(playerId, mode, playerCount),
+      getFullRankedLadder({ mode, playerCount }),
+    ]);
+    const matched = selectMatchedRivalsFromLadder({
+      ladder,
+      playerId,
+      username,
+      playerMmr: rankEntry.mmr,
+      count,
+    });
+    res.status(200).json({
+      mode,
+      playerCount,
+      playerMmr: rankEntry.mmr,
+      ...matched,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Errore selezione rivali classifica',
+    });
+  }
 });

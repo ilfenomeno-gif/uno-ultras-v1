@@ -42,6 +42,8 @@ const SettleMatchSchema = z.object({
   turnCount: z.number().int().min(1).max(2000).default(1),
   durationSec: z.number().int().min(1).max(7200).default(10),
   cardsPlayed: z.number().int().min(0).max(500).default(1),
+  botIds: z.array(z.string().min(1).max(80)).max(3).optional(),
+  botNames: z.array(z.string().min(1).max(60)).max(3).optional(),
 });
 
 progressionRouter.post('/settle-match', authRequired, settleLimiter, async (req, res) => {
@@ -55,8 +57,8 @@ progressionRouter.post('/settle-match', authRequired, settleLimiter, async (req,
   const username = req.user!.username;
   const d = parsed.data;
   const botParticipants = Array.from({ length: Math.max(1, d.playerCount - 1) }, (_, idx) => ({
-    id: `bot_${idx + 1}`,
-    username: `Bot_${idx + 1}`,
+    id: d.botIds?.[idx] ?? `bot_${idx + 1}`,
+    username: d.botNames?.[idx] ?? `Bot_${idx + 1}`,
     isBot: true,
     score: idx === 0 ? d.opponentScore : Math.max(0, d.opponentScore - (idx + 1) * 10),
     cardsPlayed: 1,
@@ -69,7 +71,7 @@ progressionRouter.post('/settle-match', authRequired, settleLimiter, async (req,
       variant: d.variant,
       playerCount: d.playerCount,
       isRanked: d.isRanked,
-      winnerId: d.won ? playerId : 'bot_1',
+      winnerId: d.won ? playerId : (botParticipants[0]?.id ?? 'bot_1'),
       turnCount: d.turnCount,
       durationSec: d.durationSec,
       participants: [

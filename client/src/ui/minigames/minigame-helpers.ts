@@ -267,6 +267,8 @@ export function formatScoreSummary(view: Record<string, unknown>): string {
 }
 
 export interface MiniGameBotProfile {
+  readonly botId?: string;
+  readonly ladderRank?: number;
   readonly name: string;
   readonly avatar: string;
   readonly avatarId: string;
@@ -276,6 +278,34 @@ export interface MiniGameBotProfile {
   readonly rankColor: string;
   readonly titleText: string;
   readonly titleColor: string;
+}
+
+export function mapMatchedRivalsToMiniGameBots(
+  rivals: readonly {
+    botId: string;
+    rank: number;
+    username: string;
+    mmr: number;
+    rankTier: string;
+    title: string;
+    titleColor: string;
+    avatarId: string;
+    frameId: string;
+  }[],
+): MiniGameBotProfile[] {
+  return rivals.map((r) => ({
+    botId: r.botId,
+    ladderRank: r.rank,
+    name: r.username,
+    avatar: '🤖',
+    avatarId: r.avatarId,
+    frameId: r.frameId,
+    baseMmr: r.mmr,
+    rankTier: r.rankTier,
+    rankColor: getRankInfo(r.mmr).colorHex,
+    titleText: r.title,
+    titleColor: r.titleColor,
+  }));
 }
 
 const MINI_GAME_AVATARS = [

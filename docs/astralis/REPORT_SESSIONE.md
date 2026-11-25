@@ -4,6 +4,17 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
+## Sessione 2026-11-25 (Parte 9) — Classifica Dinamica "Viva" (Top 100), Archivio `#1..#220` & Matchmaking Rivali `±5`
+
+- **Obiettivo**: collegare la classifica globale/playlist (**Top 100**) al sistema di matchmaking con bot persistenti che simulano risultati nel tempo, pesca esclusiva nel range **`±5` posizioni** per chi è in Top 100 (coerenza visiva + sorpasso reale battendo un rivale sopra di te) e archivio completo lato server oltre la 100ª posizione (`#101..#220`) invisibile in UI ma usato per abbinare avversari al proprio livello fino all'ingresso in Top 100.
+- **Stato Lavori**:
+  - `[x]` Servizio persistente `server/src/services/bot-ladder.ts` + estensione `botLadders` in `dev-store.ts`: archivio di `220` bot per bucket (`#1..#120` top contenders + `#121..#220` archivio esteso), simulazione periodica automatica (`tickBotLadderSimulation`), filtro rigoroso `±5` posizioni in Top 100 o `#101+` per MMR fuori classifica (`selectMatchedRivalsFromLadder` / `selectMatchedRivalsSync`) e aggiornamento MMR persistente dei bot sconfitti/vincitori (`settleBotRivalResult`).
+  - `[x]` API & Stanze: `getFullRankedLadder` + cap Top 100 in `leaderboard.ts`, endpoint `GET /api/leaderboard/rivals` in `challenges.ts`, collegamento in `UnoRoom.startUnoMatch()`, `match-settlement.ts` e `progression.ts` (`botIds` / `botNames`).
+  - `[x]` UI Client: `fetchMatchedRivals` in `rest-client.ts`, tavoli Mini-Giochi sincronizzati sui rivali reali in `sandbox-modal.ts` / `minigame-helpers.ts`, evidenziazione `RIVALE ±5` (solo entro `#1..#100`, con `#101+` nascosto) in `tab-top100.ts` e `tournaments.css`.
+  - `[x]` Nuovi test in `server/tests/integration/tournaments-and-top100.test.ts` (`4` test) + `npm run ci` verde (**27 suite Vitest / 175 test passati**: shared `78`, server `46`, client `51`; `0` errori ESLint/TS; Vite `179` moduli) + SHA-256 `contenuto-game.md` intatto (`83CAE3C057B35C22B460CC6F61BCF11AA355D1DB5F9EB4F2EC40517B2A1BD4D9`).
+
+---
+
 ## Sessione 2026-11-25 (Parte 8) — Sistema Rank Competitivo Avanzato (Classificazione, Anti-Smurfing, Media Ponderata Gruppo, Dislivello 3 Gradi & Ban Abbandono)
 
 - **Obiettivo**: allineare completamente il sistema competitivo alle regole richieste: promozioni/retrocessioni basate su risultato e difficoltà avversari, divisioni intra-grado (`I–IV`), `10` partite di classificazione con calibrazione anti-smurfing involontario verso l'alto in base alle altre playlist competitive, abilità ponderata di gruppo (con peso maggiore sul giocatore `Campione I+` e casual più vicino alla media), limite massimo di `3` livelli di dislivello per gruppi sottodimensionati in competitive/tornei (esclusi 2v2/extra), funzione **Forma Gruppo / Gioca di Nuovo** e sanzione per abbandono anticipato (sconfitta registrata, penalità MMR aggravata per il primo a uscire e ban progressivo dal matchmaking).
