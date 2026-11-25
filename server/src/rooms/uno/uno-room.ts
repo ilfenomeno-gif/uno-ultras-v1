@@ -9,6 +9,7 @@
 //  • Timeout turno umano (30s) e riconnessione DC (30s)
 // ============================================================
 
+import { randomInt } from 'node:crypto';
 import type { Client, Delayed } from 'colyseus';
 import {
   CATALOG_BY_ID,
@@ -554,7 +555,7 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
       return;
     }
 
-    const seed = Date.now() & 0x7fffffff;
+    const seed = randomInt(1, 0x7fffffff);
     this.initialSeed = seed;
     this.startedAtMs = Date.now();
     this.turnCount = 0;

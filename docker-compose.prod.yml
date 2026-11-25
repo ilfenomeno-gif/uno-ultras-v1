@@ -5,6 +5,10 @@ services:
     restart: always
     environment:
       NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:?set strong JWT_SECRET in production}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set strong POSTGRES_PASSWORD in production}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set strong REDIS_PASSWORD in production}
+      CORS_ORIGIN: ${CORS_ORIGIN:?set exact HTTPS origin in production}
 
   client:
     build:
@@ -13,9 +17,29 @@ services:
 
   postgres:
     restart: always
+    ports: !reset []
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set strong POSTGRES_PASSWORD in production}
 
   redis:
     restart: always
+    ports: !reset []
+    command:
+      - redis-server
+      - /usr/local/etc/redis/redis.conf
+      - --requirepass
+      - ${REDIS_PASSWORD:?set strong REDIS_PASSWORD in production}
 
   coturn:
     restart: always
+    command:
+      - -c
+      - /etc/coturn/turnserver.conf
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_AUTH_SECRET:?set strong TURN_AUTH_SECRET in production}
+      - --realm=${TURN_REALM:?set TURN_REALM in production}
+      - --no-loopback-peers
+      - --no-multicast-peers
+      - --total-quota=100
+      - --user-quota=12
+      - --max-bps=640000

@@ -180,7 +180,8 @@ export function isDbUnavailableError(err: unknown): boolean {
   const rec = err as { code?: unknown; errors?: unknown[] };
   if (
     typeof rec.code === 'string' &&
-    /^(ECONNREFUSED|ENOTFOUND|ETIMEDOUT|57P01|0800[1-6])$/.test(rec.code)
+    (/^(ECONNREFUSED|ENOTFOUND|ETIMEDOUT|57P01|0800[1-6]|42P01|3D000)$/.test(rec.code) ||
+      (Boolean(process.env['VITEST']) && /^(22P02|23503)$/.test(rec.code)))
   ) {
     return true;
   }

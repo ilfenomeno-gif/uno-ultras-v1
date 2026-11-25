@@ -2,6 +2,7 @@
 // UNO ULTRA Server — Generic MiniGame Base Room + Blackjack Room
 // ============================================================
 
+import { randomInt } from 'node:crypto';
 import type { Client } from 'colyseus';
 import {
   blackjackEngine,
@@ -116,7 +117,8 @@ export abstract class AbstractMiniGameRoom<
     }
     this.startedAtMs = Date.now();
     this.turnCount = 0;
-    this.engineState = engine.createInitialState(this.roomId, participants) as TState;
+    const matchSeed = randomInt(1, 0x7fffffff);
+    this.engineState = engine.createInitialState(this.roomId, participants, matchSeed) as TState;
     this.pushViews();
     this.maybeRunBotTurn();
   }

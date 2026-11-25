@@ -103,8 +103,11 @@ export async function getFullRankedLadder(opts?: {
       : 'uno';
   const titleMode: GameMode | undefined = mode === 'global' ? undefined : mode;
   const playerCount: LeaderboardPlayerCount = opts?.playerCount ?? 4;
-  const realEntries: LeaderboardEntry[] = [];
-  const seenNames = new Set<string>();
+  const realByLowerName = new Map<string, LeaderboardEntry>();
+  const addOrUpdateReal = (entry: Omit<LeaderboardEntry, 'rank'>): void => {
+    const key = entry.username.toLowerCase();
+    realByLowerName.set(key, { ...entry, rank: 0, isBot: false });
+  };
 
   try {
     const client = getRedisClient();
@@ -117,44 +120,70 @@ export async function getFullRankedLadder(opts?: {
       for (const entry of items) {
         const [playerId = '', username = 'Unknown'] = entry.value.split('|');
         const mmr = Math.round(entry.score);
-        if (!seenNames.has(username.toLowerCase())) {
-          seenNames.add(username.toLowerCase());
-          const pickedTitle = pickPrestigiousTitleForMMR(mmr, titleMode, realEntries.length);
-          realEntries.push({
-            rank: 0,
-            playerId,
-            username,
-            mmr,
-            rankTier: getRankFromMMR(mmr),
-            wins: Math.max(1, Math.round(mmr / 20)),
-            winRate: 56,
-            title: pickedTitle.name,
-            titleColor: pickedTitle.color,
-            isBot: false,
-          });
-        }
+        const pickedTitle = pickPrestigiousTitleForMMR(mmr, titleMode, realByLowerName.size);
+        addOrUpdateReal({
+          playerId,
+          username,
+          mmr,
+          rankTier: getRankFromMMR(mmr),
+          wins: Math.max(1, Math.round(mmr / 20)),
+          winRate: 56,
+          title: pickedTitle.name,
+          titleColor: pickedTitle.color,
+        });
       }
     }
   } catch {
-    // Fallback to Postgres
+    // Fallback to Postgres / memory / dev-store
   }
 
-  if (realEntries.length === 0) {
+  if (realByLowerName.size === 0) {
     try {
-      const res = await query<{ id: string; username: string; mmr: number; rank_tier: string }>(
-        `SELECT id, username, mmr, rank_tier
-           FROM players
-          WHERE deleted_at IS NULL
-          ORDER BY mmr DESC, username ASC
-          LIMIT 300`,
-      );
-      for (const r of res.rows) {
-        if (!seenNames.has(r.username.toLowerCase())) {
-          seenNames.add(r.username.toLowerCase());
+      if (!isGlobal) {
+        const res = await query<{
+          id: string;
+          username: string;
+          mmr: number;
+          rank_tier: string;
+          wins: number;
+          losses: number;
+        }>(
+          `SELECT pl.id, pl.username, ppr.mmr, ppr.rank_tier, ppr.wins, ppr.losses
+             FROM player_playlist_ranks ppr
+             JOIN players pl ON pl.id = ppr.player_id
+            WHERE ppr.mode = $1 AND ppr.player_count = $2 AND pl.deleted_at IS NULL
+            ORDER BY ppr.mmr DESC, pl.username ASC
+            LIMIT 300`,
+          [mode, playerCount],
+        );
+        for (const r of res.rows) {
           const mmr = Number(r.mmr);
-          const pickedTitle = pickPrestigiousTitleForMMR(mmr, titleMode, realEntries.length);
-          realEntries.push({
-            rank: 0,
+          const wins = Number(r.wins);
+          const total = Math.max(1, wins + Number(r.losses));
+          const pickedTitle = pickPrestigiousTitleForMMR(mmr, titleMode, realByLowerName.size);
+          addOrUpdateReal({
+            playerId: r.id,
+            username: r.username,
+            mmr,
+            rankTier: r.rank_tier,
+            wins,
+            winRate: Math.round((wins / total) * 100),
+            title: pickedTitle.name,
+            titleColor: pickedTitle.color,
+          });
+        }
+      } else {
+        const res = await query<{ id: string; username: string; mmr: number; rank_tier: string }>(
+          `SELECT id, username, mmr, rank_tier
+             FROM players
+            WHERE deleted_at IS NULL
+            ORDER BY mmr DESC, username ASC
+            LIMIT 300`,
+        );
+        for (const r of res.rows) {
+          const mmr = Number(r.mmr);
+          const pickedTitle = pickPrestigiousTitleForMMR(mmr, titleMode, realByLowerName.size);
+          addOrUpdateReal({
             playerId: r.id,
             username: r.username,
             mmr,
@@ -163,62 +192,53 @@ export async function getFullRankedLadder(opts?: {
             winRate: 54,
             title: pickedTitle.name,
             titleColor: pickedTitle.color,
-            isBot: false,
           });
         }
       }
     } catch {
-      const targetBucket = isGlobal ? 'global' : `${mode}:${playerCount}p`;
-      const devBucket =
-        env.NODE_ENV !== 'production' ? readDevState().leaderboards[targetBucket] : undefined;
-      if (devBucket) {
-        for (const [k, info] of Object.entries(devBucket)) {
-          if (!seenNames.has(info.username.toLowerCase())) {
-            seenNames.add(info.username.toLowerCase());
-            const pickedTitle = pickPrestigiousTitleForMMR(info.mmr, titleMode, realEntries.length);
-            realEntries.push({
-              rank: 0,
-              playerId: k,
-              username: info.username,
-              mmr: info.mmr,
-              rankTier: getRankFromMMR(info.mmr),
-              wins: Math.max(1, Math.round(info.mmr / 24)),
-              winRate: 55,
-              title: pickedTitle.name,
-              titleColor: pickedTitle.color,
-              isBot: false,
-            });
-          }
-        }
+      // Fall through to dev-store / memory overlay
+    }
+
+    const targetBucket = isGlobal ? 'global' : `${mode}:${playerCount}p`;
+    const devBucket =
+      env.NODE_ENV !== 'production' ? readDevState().leaderboards[targetBucket] : undefined;
+    if (devBucket) {
+      for (const [k, info] of Object.entries(devBucket)) {
+        const pickedTitle = pickPrestigiousTitleForMMR(info.mmr, titleMode, realByLowerName.size);
+        addOrUpdateReal({
+          playerId: k,
+          username: info.username,
+          mmr: info.mmr,
+          rankTier: getRankFromMMR(info.mmr),
+          wins: Math.max(1, Math.round(info.mmr / 24)),
+          winRate: 55,
+          title: pickedTitle.name,
+          titleColor: pickedTitle.color,
+        });
       }
-      const prefix = isGlobal ? 'global:' : `${mode}:${playerCount}p:`;
-      for (const [k, info] of memoryScores.entries()) {
-        if (!k.startsWith(prefix)) continue;
-        const cleanId = k.slice(prefix.length);
-        if (!seenNames.has(info.username.toLowerCase())) {
-          seenNames.add(info.username.toLowerCase());
-          const pickedTitle = pickPrestigiousTitleForMMR(info.mmr, titleMode, realEntries.length);
-          realEntries.push({
-            rank: 0,
-            playerId: cleanId,
-            username: info.username,
-            mmr: info.mmr,
-            rankTier: getRankFromMMR(info.mmr),
-            wins: Math.max(1, Math.round(info.mmr / 24)),
-            winRate: 55,
-            title: pickedTitle.name,
-            titleColor: pickedTitle.color,
-            isBot: false,
-          });
-        }
-      }
+    }
+    const prefix = isGlobal ? 'global:' : `${mode}:${playerCount}p:`;
+    for (const [k, info] of memoryScores.entries()) {
+      if (!k.startsWith(prefix)) continue;
+      const cleanId = k.slice(prefix.length);
+      const pickedTitle = pickPrestigiousTitleForMMR(info.mmr, titleMode, realByLowerName.size);
+      addOrUpdateReal({
+        playerId: cleanId,
+        username: info.username,
+        mmr: info.mmr,
+        rankTier: getRankFromMMR(info.mmr),
+        wins: Math.max(1, Math.round(info.mmr / 24)),
+        winRate: 55,
+        title: pickedTitle.name,
+        titleColor: pickedTitle.color,
+      });
     }
   }
 
   return buildFullRankedLadder({
     mode,
     ...(isGlobal ? {} : { playerCount }),
-    realEntries,
+    realEntries: [...realByLowerName.values()],
     ...(opts?.simulate !== undefined ? { simulate: opts.simulate } : {}),
   });
 }

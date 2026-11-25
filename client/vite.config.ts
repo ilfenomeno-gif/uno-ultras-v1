@@ -15,5 +15,19 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/three')) return 'vendor-three';
+          if (id.includes('node_modules/colyseus.js') || id.includes('@colyseus')) {
+            return 'vendor-colyseus';
+          }
+          if (id.includes('/shared/') || id.includes('\\shared\\')) {
+            return 'uno-shared';
+          }
+          return undefined;
+        },
+      },
+    },
   },
 });

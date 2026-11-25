@@ -4,6 +4,17 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
+## Sessione 2026-11-25 (Parte 10) — Hardening RNG/CoTURN/Docker Produzione, Allineamento `README.md` & Code-Splitting Vite
+
+- **Obiettivo**: chiudere le criticità reali emerse dalla verifica architetturale e di sicurezza del repository: seed RNG crittografici lato server, hardening CoTURN e `docker-compose.prod.yml`, aggiornamento accurato di `README.md` e suddivisione dei chunk Vite sotto `500 kB`.
+- **Stato Lavori**:
+  - `[x]` Seed RNG crittografico (`node:crypto` `randomInt(1, 0x7fffffff)`) su `UnoRoom` (`server/src/rooms/uno/uno-room.ts`) e su `AbstractMiniGameRoom` (`server/src/rooms/mini-games/blackjack-room.ts`) al posto dei seed derivati da `Date.now()`.
+  - `[x]` Hardening CoTURN & Produzione: aggiunti `no-loopback-peers`, blocchi CIDR privati/loopback (`denied-peer-ip`) e quote (`total-quota`, `user-quota`, `max-bps`) in `docker/coturn/turnserver.conf`; chiuse le porte pubbliche PostgreSQL/Redis (`ports: !reset []`), rese obbligatorie password forti da ambiente (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `JWT_SECRET`, `CORS_ORIGIN`, `TURN_AUTH_SECRET`, `TURN_REALM`) e attivato `--use-auth-secret` in `docker-compose.prod.yml` e `.env.example`.
+  - `[x]` Aggiornamento trasparente di `README.md` con stato reale (migrazioni `0001`–`0010`, matchmaking online, varianti UNO, 7 mini-giochi, Top 100 viva `±5`, chiarimento su `:41234/udp` vs WebSocket/WebRTC).
+  - `[x]` Configurato `build.rollupOptions.output.manualChunks` in `client/vite.config.ts` (`vendor-three`, `vendor-colyseus`, `uno-shared`) eliminando il warning di bundle `> 500 kB`.
+
+---
+
 ## Sessione 2026-11-25 (Parte 9) — Classifica Dinamica "Viva" (Top 100), Archivio `#1..#220` & Matchmaking Rivali `±5`
 
 - **Obiettivo**: collegare la classifica globale/playlist (**Top 100**) al sistema di matchmaking con bot persistenti che simulano risultati nel tempo, pesca esclusiva nel range **`±5` posizioni** per chi è in Top 100 (coerenza visiva + sorpasso reale battendo un rivale sopra di te) e archivio completo lato server oltre la 100ª posizione (`#101..#220`) invisibile in UI ma usato per abbinare avversari al proprio livello fino all'ingresso in Top 100.
