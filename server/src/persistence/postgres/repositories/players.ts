@@ -6,9 +6,8 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { env } from '../../../config/env.js';
 import { query } from '../client.js';
-import { isDbUnavailableError } from '../dev-store.js';
+import { canUseDevFallback } from '../dev-store.js';
 
 export interface PlayerRow {
   id: string;
@@ -90,7 +89,7 @@ export async function isUsernameReserved(username: string): Promise<boolean> {
     );
     return (res.rowCount ?? 0) > 0;
   } catch (err) {
-    if (env.NODE_ENV !== 'production' && isDbUnavailableError(err)) {
+    if (canUseDevFallback(err)) {
       return RESERVED_USERNAMES.has(canonical);
     }
     throw err;
@@ -111,7 +110,7 @@ export async function findPlayerByUsername(username: string): Promise<PlayerRow 
     );
     return res.rows[0] ?? null;
   } catch (err) {
-    if (env.NODE_ENV !== 'production' && isDbUnavailableError(err)) {
+    if (canUseDevFallback(err)) {
       const found = readDevPlayers().find((p) => p.username_canonical === canonical);
       return found ? toPlayerRow(found) : null;
     }
@@ -131,7 +130,7 @@ export async function findPlayerById(id: string): Promise<PlayerRow | null> {
     );
     return res.rows[0] ?? null;
   } catch (err) {
-    if (env.NODE_ENV !== 'production' && isDbUnavailableError(err)) {
+    if (canUseDevFallback(err)) {
       const found = readDevPlayers().find((p) => p.id === id);
       return found ? toPlayerRow(found) : null;
     }
@@ -156,7 +155,7 @@ export async function createPlayer(input: CreatePlayerInput): Promise<PlayerRow>
     }
     return row;
   } catch (err) {
-    if (env.NODE_ENV !== 'production' && isDbUnavailableError(err)) {
+    if (canUseDevFallback(err)) {
       const list = readDevPlayers();
       if (list.some((p) => p.username_canonical === canonical)) {
         const dup = new Error('Username already exists') as Error & { code: string };
@@ -228,7 +227,7 @@ export async function updatePlayerRank(
       [playerId, mmr, rankTier],
     );
   } catch (err) {
-    if (env.NODE_ENV !== 'production' && isDbUnavailableError(err)) {
+    if (canUseDevFallback(err)) {
       const list = readDevPlayers();
       const target = list.find((p) => p.id === playerId);
       if (target) {

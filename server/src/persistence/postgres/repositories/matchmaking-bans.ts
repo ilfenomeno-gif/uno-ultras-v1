@@ -53,7 +53,7 @@ export async function getActiveMatchmakingBan(
     );
     const row = res.rows[0];
     if (!row) {
-      if (env.NODE_ENV !== 'production') {
+      if (env.NODE_ENV !== 'production' && process.env['NODE_ENV'] !== 'production') {
         const rec = readDevState().matchmakingBans[playerId];
         return rec ? toActiveBan(rec) : null;
       }

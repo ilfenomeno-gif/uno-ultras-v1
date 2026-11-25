@@ -22,9 +22,16 @@ vi.mock('colyseus', async (importOriginal) => {
 
 import { signAccessToken } from '../../src/auth/jwt-service.js';
 import { matchmakingQueue } from '../../src/matchmaking/queue.js';
-import { createHttpApp } from '../../src/net/tcp/http-server.js';
+import { apiErrorHandler, createHttpApp } from '../../src/net/tcp/http-server.js';
+import { recoverOrphanedMatchmakingTickets } from '../../src/net/tcp/rest-routes/matchmaking.js';
+import { canUseDevFallback } from '../../src/persistence/postgres/dev-store.js';
 import { recordMatchAbandonment } from '../../src/persistence/postgres/repositories/matchmaking-bans.js';
+import {
+  cacheMatchmakingTicket,
+  getMatchmakingTicket,
+} from '../../src/persistence/redis/matchmaking-cache.js';
 import { UnoRoom } from '../../src/rooms/uno/uno-room.js';
+import { clearMemoryRateLimits } from '../../src/security/rate-limiter.js';
 
 let server: http.Server;
 let baseUrl = '';
@@ -339,5 +346,90 @@ describe('Matchmaking Hardening & Negative Paths', () => {
       body: JSON.stringify({ mode: 'uno', ranked: true, targetPlayers: 2 }),
     });
     expect(bannedEnq.status).toBe(403);
+  });
+
+  it('fails closed in NODE_ENV=production (disables dev fallback and returns 503 on DB error)', () => {
+    const prevNodeEnv = process.env['NODE_ENV'];
+    try {
+      process.env['NODE_ENV'] = 'production';
+      expect(canUseDevFallback({ code: 'ECONNREFUSED' })).toBe(false);
+      expect(canUseDevFallback({ code: '42P01' })).toBe(false);
+
+      const statusSpy = vi.fn();
+      const jsonSpy = vi.fn();
+      statusSpy.mockReturnValue({ json: jsonSpy });
+      const fakeRes = { status: statusSpy } as unknown as Parameters<typeof apiErrorHandler>[2];
+
+      apiErrorHandler(
+        Object.assign(new Error('relation "players" does not exist'), { code: '42P01' }),
+        {} as Parameters<typeof apiErrorHandler>[1],
+        fakeRes,
+        vi.fn(),
+      );
+
+      expect(statusSpy).toHaveBeenCalledWith(503);
+      expect(jsonSpy).toHaveBeenCalledWith({
+        error: 'Database temporaneamente non disponibile',
+      });
+    } finally {
+      if (prevNodeEnv === undefined) {
+        delete process.env['NODE_ENV'];
+      } else {
+        process.env['NODE_ENV'] = prevNodeEnv;
+      }
+    }
+  });
+
+  it('configures trust proxy = 1 and isolates /status polling limiter from /enqueue quota', async () => {
+    clearMemoryRateLimits();
+    try {
+      const app = createHttpApp();
+      expect(app.get('trust proxy')).toBe(1);
+
+      const enqRes = await fetch(`${baseUrl}/matchmaking/enqueue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenA}` },
+        body: JSON.stringify({ mode: 'uno', ranked: false, targetPlayers: 2 }),
+      });
+      expect(enqRes.status).toBe(200);
+      const { ticket } = (await enqRes.json()) as { ticket: { ticketId: string } };
+
+      // 15 polling consecutivi (> limite 12/min di enqueueLimiter) devono passare tutti con 200
+      for (let i = 0; i < 15; i++) {
+        const pollRes = await fetch(`${baseUrl}/matchmaking/status/${ticket.ticketId}`, {
+          headers: { Authorization: `Bearer ${tokenA}` },
+        });
+        expect(pollRes.status).toBe(200);
+      }
+
+      // enqueueLimiter resta indipendente e permette ancora un nuovo enqueue
+      const secondEnq = await fetch(`${baseUrl}/matchmaking/enqueue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenA}` },
+        body: JSON.stringify({ mode: 'uno', ranked: false, targetPlayers: 2 }),
+      });
+      expect(secondEnq.status).toBe(200);
+    } finally {
+      clearMemoryRateLimits();
+    }
+  });
+
+  it('recovers and expires orphaned searching tickets on server startup', async () => {
+    const orphanedId = `orphan_ticket_${Date.now()}`;
+    await cacheMatchmakingTicket(orphanedId, {
+      status: 'searching',
+      ticketId: orphanedId,
+      playerId: playerAId,
+      mode: 'uno',
+      ranked: false,
+      fallbackAtMs: Date.now() - 5000,
+    });
+
+    const recoveredCount = await recoverOrphanedMatchmakingTickets();
+    expect(recoveredCount).toBeGreaterThanOrEqual(1);
+
+    const updated = await getMatchmakingTicket(orphanedId);
+    expect(updated?.['status']).toBe('cancelled');
+    expect(updated?.['reason']).toBe('server_restarted_expired');
   });
 });

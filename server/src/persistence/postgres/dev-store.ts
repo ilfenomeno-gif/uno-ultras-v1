@@ -192,7 +192,10 @@ export function isDbUnavailableError(err: unknown): boolean {
 }
 
 export function canUseDevFallback(err: unknown): boolean {
-  return env.NODE_ENV !== 'production' && isDbUnavailableError(err);
+  if (env.NODE_ENV === 'production' || process.env['NODE_ENV'] === 'production') {
+    return false;
+  }
+  return isDbUnavailableError(err);
 }
 
 function loadDevStateFromDisk(): DevStateSnapshot {

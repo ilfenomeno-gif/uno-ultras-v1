@@ -30,10 +30,10 @@ export interface FormedMatch {
 export class MatchmakingQueue {
   private readonly entries = new Map<string, QueueTicket>();
 
-  enqueue(input: Omit<QueueTicket, 'ticketId' | 'joinedAtMs'>): QueueTicket {
+  enqueue(input: Omit<QueueTicket, 'ticketId' | 'joinedAtMs'> & { ticketId?: string }): QueueTicket {
     const ticket: QueueTicket = {
       ...input,
-      ticketId: randomUUID(),
+      ticketId: input.ticketId ?? randomUUID(),
       joinedAtMs: Date.now(),
     };
     this.entries.set(input.playerId, ticket);

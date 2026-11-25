@@ -12,6 +12,7 @@ import { BlackjackRoom, GenericMiniGameRoom } from './rooms/mini-games/blackjack
 import { Scala40Room } from './rooms/mini-games/scala40-room.js';
 import { ScopaRoom } from './rooms/mini-games/scopa-room.js';
 import { telemetryUdpServer } from './net/udp/telemetry-udp.js';
+import { recoverOrphanedMatchmakingTickets } from './net/tcp/rest-routes/matchmaking.js';
 import { seedBotSocialProfiles } from './persistence/postgres/repositories/bot-social.js';
 import { connectRedis, closeRedis } from './persistence/redis/client.js';
 import { closePostgres } from './persistence/postgres/client.js';
@@ -28,13 +29,17 @@ async function bootstrap(): Promise<void> {
     logger.warn({ err }, 'Redis not reachable at startup — continuing with local presence');
   }
 
-  // Migrazioni idempotenti SQL (opzionale in dev se Postgres non avviato)
+  // Migrazioni idempotenti SQL (obbligatorie in produzione, opzionali in dev se Postgres non avviato)
   try {
     const applied = await runMigrations();
     if (applied.length > 0) {
       logger.info({ applied }, 'PostgreSQL migrations applied');
     }
   } catch (err) {
+    if (env.NODE_ENV === 'production' || process.env['NODE_ENV'] === 'production') {
+      logger.fatal({ err }, 'PostgreSQL migrations failed in production — aborting startup');
+      throw err;
+    }
     logger.warn({ err }, 'PostgreSQL migrations skipped at startup');
   }
 
@@ -48,6 +53,15 @@ async function bootstrap(): Promise<void> {
   gameServer.define('scala40', Scala40Room);
   gameServer.define('scopa', ScopaRoom);
   gameServer.define('minigame', GenericMiniGameRoom);
+
+  try {
+    const recovered = await recoverOrphanedMatchmakingTickets();
+    if (recovered > 0) {
+      logger.info({ recovered }, 'Recovered orphaned matchmaking tickets after startup');
+    }
+  } catch (err) {
+    logger.warn({ err }, 'Matchmaking startup ticket recovery failed');
+  }
 
   try {
     await seedBotSocialProfiles();

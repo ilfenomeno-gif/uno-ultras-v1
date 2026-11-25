@@ -4,6 +4,17 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
+## Sessione 2026-11-25 (Parte 15) — Fail-Closed Produzione DB/Migrazioni, `trust proxy` + Limiter Separati & Recovery Ticket al Riavvio
+
+- **Obiettivo**: chiudere il rischio di fallback silenzioso in produzione, rendere indipendenti i rate-limiter dietro proxy e recuperare eventuali ticket `searching` rimasti orfani da un riavvio server.
+- **Stato Lavori**:
+  - `[x]` Fail-closed produzione: `canUseDevFallback()` ora verifica esplicitamente `NODE_ENV !== 'production'` (`env.NODE_ENV` e `process.env.NODE_ENV`), `players.ts` riusa `canUseDevFallback()`, `runMigrations()` abortisce il bootstrap se `NODE_ENV === 'production'`, e `apiErrorHandler` in `server/src/net/tcp/http-server.ts` restituisce `503` su errori DB (`isDbUnavailableError`).
+  - `[x]` Proxy & Limiter dedicati: impostato `app.set('trust proxy', 1)` e separati `enqueueLimiter` (`12/min`), `statusLimiter` (`180/min`) e `cancelLimiter` (`30/min`) su `req.user.sub ?? req.ip` in `server/src/net/tcp/rest-routes/matchmaking.ts`.
+  - `[x]` Recovery ticket all'avvio: `listSearchingMatchmakingTickets()` (`server/src/persistence/redis/matchmaking-cache.ts`) + `recoverOrphanedMatchmakingTickets()` collegato a `server/src/index.ts`.
+  - `[x]` Nuovi test in `server/tests/integration/matchmaking-hardening.test.ts` (fail-closed `production` + `503`, `trust proxy` + 15 polling consecutivi senza `429`, recovery ticket scaduto).
+
+---
+
 ## Sessione 2026-11-25 (Parte 14) — CI Production-Parity (PostgreSQL 16 + Redis 7), Fallback Timer Autonomo, Claim Lua & Intruso WebSocket E2E
 
 - **Obiettivo**: eseguire l'E2E in CI contro PostgreSQL 16 e Redis 7 reali con `NODE_ENV=production`, spostare il fallback bot in un timer lato server rendendo `GET /status` puramente side-effect free, aggiungere claim atomico Lua su Redis, tetto stanze (`503`) / rate limit stretto e test reale WebSocket di un intruso nell'E2E.

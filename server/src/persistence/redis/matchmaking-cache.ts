@@ -52,3 +52,52 @@ export async function getMatchmakingTicket(
   }
   return JSON.parse(local.data) as Record<string, unknown>;
 }
+
+export async function listSearchingMatchmakingTickets(): Promise<Array<Record<string, unknown>>> {
+  const byTicketId = new Map<string, Record<string, unknown>>();
+  const now = Date.now();
+
+  for (const [id, entry] of ticketMemory) {
+    if (entry.expiresAt < now) {
+      ticketMemory.delete(id);
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(entry.data) as Record<string, unknown>;
+      if (parsed['status'] === 'searching') {
+        byTicketId.set(id, parsed);
+      }
+    } catch {
+      // ignore malformed cached entry
+    }
+  }
+
+  try {
+    const client = getRedisClient();
+    if (client.isOpen) {
+      for await (const rawKey of client.scanIterator({ MATCH: 'mm:ticket:*', COUNT: 100 })) {
+        const keys = Array.isArray(rawKey) ? rawKey : [rawKey];
+        for (const key of keys) {
+          const val = await client.get(String(key));
+          if (!val) continue;
+          try {
+            const parsed = JSON.parse(val) as Record<string, unknown>;
+            const id =
+              typeof parsed['ticketId'] === 'string'
+                ? parsed['ticketId']
+                : String(key).replace(/^mm:ticket:/, '');
+            if (parsed['status'] === 'searching' && id) {
+              byTicketId.set(id, parsed);
+            }
+          } catch {
+            // ignore malformed JSON
+          }
+        }
+      }
+    }
+  } catch {
+    // fallback in-memory entries already collected
+  }
+
+  return [...byTicketId.values()];
+}

@@ -5,6 +5,7 @@
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
+import { isDbUnavailableError } from '../../persistence/postgres/dev-store.js';
 import { healthRouter } from './rest-routes/health.js';
 import { authRouter } from './rest-routes/auth.js';
 import { profileRouter } from './rest-routes/profile.js';
@@ -20,10 +21,20 @@ import { syncRouter } from './rest-routes/sync.js';
 import { matchmakingRouter } from './rest-routes/matchmaking.js';
 import { progressionRouter } from './rest-routes/progression.js';
 
+export function apiErrorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction): void {
+  logger.error({ err }, 'Unhandled Express error');
+  if (isDbUnavailableError(err)) {
+    res.status(503).json({ error: 'Database temporaneamente non disponibile' });
+    return;
+  }
+  res.status(500).json({ error: 'Errore interno del server' });
+}
+
 export function createHttpApp(): Express {
   const app = express();
 
   app.disable('x-powered-by');
+  app.set('trust proxy', 1);
   app.use(express.json({ limit: '64kb' }));
 
   // CORS minimale per sviluppo client Vite e reverse proxy Nginx
@@ -61,11 +72,8 @@ export function createHttpApp(): Express {
     res.status(404).json({ error: 'Endpoint API non trovato' });
   });
 
-  // Global error handler
-  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-    logger.error({ err }, 'Unhandled Express error');
-    res.status(500).json({ error: 'Errore interno del server' });
-  });
+  // Global error handler (fail-closed 503 su errori DB)
+  app.use(apiErrorHandler);
 
   return app;
 }

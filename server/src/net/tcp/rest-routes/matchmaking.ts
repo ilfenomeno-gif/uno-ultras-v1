@@ -3,7 +3,7 @@
 // ============================================================
 
 import { randomUUID } from 'node:crypto';
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { matchMaker } from 'colyseus';
 import { z } from 'zod';
 import {
@@ -24,12 +24,33 @@ import { getPlayerPlaylistRank } from '../../../persistence/postgres/repositorie
 import {
   cacheMatchmakingTicket,
   getMatchmakingTicket,
+  listSearchingMatchmakingTickets,
 } from '../../../persistence/redis/matchmaking-cache.js';
 import { createRateLimiter } from '../../../security/rate-limiter.js';
 
 export const matchmakingRouter = Router();
 
-const mmLimiter = createRateLimiter({ scope: 'matchmaking', max: 12, windowSeconds: 60 });
+const mmKeyFn = (req: Request): string =>
+  req.user?.sub ?? req.ip ?? req.socket.remoteAddress ?? 'unknown';
+
+const enqueueLimiter = createRateLimiter({
+  scope: 'mm_enqueue',
+  max: 12,
+  windowSeconds: 60,
+  keyFn: mmKeyFn,
+});
+const statusLimiter = createRateLimiter({
+  scope: 'mm_status',
+  max: 180,
+  windowSeconds: 60,
+  keyFn: mmKeyFn,
+});
+const cancelLimiter = createRateLimiter({
+  scope: 'mm_cancel',
+  max: 30,
+  windowSeconds: 60,
+  keyFn: mmKeyFn,
+});
 const fallbackTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function clearFallbackTimer(ticketId: string): void {
@@ -115,7 +136,7 @@ const EnqueueSchema = z.object({
   isTournament: z.boolean().optional(),
 });
 
-matchmakingRouter.post('/enqueue', authRequired, mmLimiter, async (req, res) => {
+matchmakingRouter.post('/enqueue', authRequired, enqueueLimiter, async (req, res) => {
   const parsed = EnqueueSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     res.status(400).json({ error: 'Parametri coda matchmaking non validi' });
@@ -287,7 +308,7 @@ matchmakingRouter.post('/enqueue', authRequired, mmLimiter, async (req, res) => 
   });
 });
 
-matchmakingRouter.get('/status/:ticketId', authRequired, async (req, res) => {
+matchmakingRouter.get('/status/:ticketId', authRequired, statusLimiter, async (req, res) => {
   const ticketId = String(req.params['ticketId'] ?? '').trim();
   if (!ticketId) {
     res.status(400).json({ error: 'ticketId mancante' });
@@ -306,7 +327,7 @@ matchmakingRouter.get('/status/:ticketId', authRequired, async (req, res) => {
   res.status(200).json(ticket);
 });
 
-matchmakingRouter.delete('/cancel', authRequired, async (req, res) => {
+matchmakingRouter.delete('/cancel', authRequired, cancelLimiter, async (req, res) => {
   const playerId = req.user!.sub;
   const removed = matchmakingQueue.cancelAndGetTicket(playerId);
   const queryMode = (GAME_MODES as readonly string[]).includes(String(req.query['mode']))
@@ -332,3 +353,55 @@ matchmakingRouter.delete('/cancel', authRequired, async (req, res) => {
     ...(removed ? { ticketId: removed.ticketId } : {}),
   });
 });
+
+export async function recoverOrphanedMatchmakingTickets(): Promise<number> {
+  const searching = await listSearchingMatchmakingTickets();
+  const now = Date.now();
+  let recovered = 0;
+
+  for (const t of searching) {
+    const ticketId = typeof t['ticketId'] === 'string' ? t['ticketId'] : '';
+    const playerId = typeof t['playerId'] === 'string' ? t['playerId'] : '';
+    if (!ticketId || !playerId || fallbackTimers.has(ticketId)) continue;
+
+    const mode = (GAME_MODES as readonly string[]).includes(String(t['mode']))
+      ? (t['mode'] as GameMode)
+      : 'uno';
+    const ranked = Boolean(t['ranked']);
+    const fallbackAtMs = typeof t['fallbackAtMs'] === 'number' ? t['fallbackAtMs'] : 0;
+
+    if (fallbackAtMs > now) {
+      const mmr = typeof t['mmr'] === 'number' ? t['mmr'] : 0;
+      const targetPlayers = typeof t['targetPlayers'] === 'number' ? t['targetPlayers'] : 4;
+      const variant = typeof t['variant'] === 'string' ? t['variant'] : 'standard';
+      matchmakingQueue.enqueue({
+        ticketId,
+        playerId,
+        username: typeof t['username'] === 'string' ? t['username'] : `Player_${playerId.slice(0, 6)}`,
+        mode,
+        ranked,
+        mmr,
+        targetPlayers,
+        variant,
+        fallbackAtMs,
+      });
+      const remainingMs = Math.max(20, fallbackAtMs - now);
+      const timer = setTimeout(() => {
+        fallbackTimers.delete(ticketId);
+        void runServerBotFallback(playerId, ticketId);
+      }, remainingMs);
+      timer.unref();
+      fallbackTimers.set(ticketId, timer);
+    } else {
+      await claimRedisQueueMember(mode, ranked, playerId);
+      await cacheMatchmakingTicket(ticketId, {
+        ...t,
+        status: 'cancelled',
+        reason: 'server_restarted_expired',
+      });
+    }
+    recovered += 1;
+  }
+
+  return recovered;
+}
