@@ -103,6 +103,12 @@ export interface MatchRewardReceipt {
   rankBefore: string;
   rankAfter: string;
   rankPromoted: boolean;
+  rankDemoted?: boolean;
+  subDivision?: 'I' | 'II' | 'III' | 'IV' | null;
+  placementMatchesPlayed?: number;
+  placementRequired?: number;
+  calibratedUpward?: boolean;
+  calibrationBonusMmr?: number;
   xpEarned: number;
   battleCardLevelAfter: number;
   vcardEarned: number;

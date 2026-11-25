@@ -3,6 +3,8 @@ import type http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { signAccessToken } from '../../src/auth/jwt-service.js';
 import { createHttpApp } from '../../src/net/tcp/http-server.js';
+import { recordMatchAbandonment } from '../../src/persistence/postgres/repositories/matchmaking-bans.js';
+import { upsertPlayerPlaylistRank } from '../../src/persistence/postgres/repositories/playlist-ranks.js';
 import {
   resolveModeMultiplier,
   settleFinishedMatchWithReceipts,
@@ -199,5 +201,167 @@ describe('MCP Progression Hub (Rank, MMR, Modes, Challenges, Battle Card)', () =
     expect(snap.playlistRanks['uno:3p']?.mmr).toBe(0);
     expect(snap.playlistRanks['uno:3p']?.rankTier).toBe('Bronze I');
     expect(snap.playlistRanks['scala40:2p']).toBeUndefined();
+  });
+
+  it('enforces 3-tier disparity on undersized ranked UNO queues and weighted party MMR', async () => {
+    const plat2Id = `disp_p2_${Date.now()}`;
+    const plat2Token = signAccessToken({ sub: plat2Id, username: 'PlatTwo' });
+    await upsertPlayerPlaylistRank({
+      playerId: plat2Id,
+      mode: 'uno',
+      playerCount: 3,
+      mmr: 867,
+      rankTier: 'Platinum II',
+      won: true,
+    });
+
+    // Platinum II (867) + Diamond III (1134) -> gap 4 -> 403 in 3p ranked UNO
+    const blocked = await fetch(`${baseUrl}/api/matchmaking/enqueue`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${plat2Token}` },
+      body: JSON.stringify({
+        mode: 'uno',
+        ranked: true,
+        targetPlayers: 3,
+        partyMemberMmrs: [1134],
+      }),
+    });
+    expect(blocked.status).toBe(403);
+
+    // Platinum III (934) + Diamond III (1134) -> gap 3 -> 200 with weighted party MMR
+    const plat3Id = `disp_p3_${Date.now()}`;
+    const plat3Token = signAccessToken({ sub: plat3Id, username: 'PlatThree' });
+    await upsertPlayerPlaylistRank({
+      playerId: plat3Id,
+      mode: 'uno',
+      playerCount: 3,
+      mmr: 934,
+      rankTier: 'Platinum III',
+      won: true,
+    });
+    const allowed = await fetch(`${baseUrl}/api/matchmaking/enqueue`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${plat3Token}` },
+      body: JSON.stringify({
+        mode: 'uno',
+        ranked: true,
+        targetPlayers: 3,
+        partyMemberMmrs: [1134],
+      }),
+    });
+    expect(allowed.status).toBe(200);
+    const allowedBody = (await allowed.json()) as { effectivePartyMmr: number };
+    expect(allowedBody.effectivePartyMmr).toBeGreaterThan(1034);
+  });
+
+  it('penalizes early abandonment, blocks ranked queue with a ban, and exposes activeBan in snapshot', async () => {
+    const leaverId = `leaver_${Date.now()}`;
+    const leaverToken = signAccessToken({ sub: leaverId, username: 'EarlyLeaver' });
+    await upsertPlayerPlaylistRank({
+      playerId: leaverId,
+      mode: 'uno',
+      playerCount: 2,
+      mmr: 800,
+      rankTier: 'Platinum I',
+      won: true,
+    });
+
+    const outcome = await recordMatchAbandonment({
+      playerId: leaverId,
+      username: 'EarlyLeaver',
+      matchId: `abandon_${Date.now()}`,
+      mode: 'uno',
+      playerCount: 2,
+      opponentMmr: 800,
+      isFirstLeaver: true,
+    });
+    expect(outcome.mmrDelta).toBeLessThan(-20);
+    expect(outcome.ban.remainingSeconds).toBeGreaterThan(60);
+
+    const queueRes = await fetch(`${baseUrl}/api/matchmaking/enqueue`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${leaverToken}` },
+      body: JSON.stringify({ mode: 'uno', ranked: true, targetPlayers: 2 }),
+    });
+    expect(queueRes.status).toBe(403);
+
+    const snapRes = await fetch(`${baseUrl}/api/progression/snapshot`, {
+      headers: { Authorization: `Bearer ${leaverToken}` },
+    });
+    expect(snapRes.status).toBe(200);
+    const snap = (await snapRes.json()) as { activeBan: { offenseCount: number } | null };
+    expect(snap.activeBan?.offenseCount).toBe(1);
+  });
+
+  it('calibrates 10th placement match upward using skill proven in other competitive playlists', async () => {
+    const reg = await fetch(`${baseUrl}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: `Cal_${Date.now().toString(36)}`,
+        password: 'TestPassword!1',
+        confirmPassword: 'TestPassword!1',
+      }),
+    });
+    expect(reg.status).toBe(201);
+    const { token: calToken } = (await reg.json()) as { token: string };
+    const snap0Res = await fetch(`${baseUrl}/api/progression/snapshot`, {
+      headers: { Authorization: `Bearer ${calToken}` },
+    });
+    expect(snap0Res.status).toBe(200);
+    const { playerId: calPlayerId } = (await snap0Res.json()) as { playerId: string };
+
+    // High skill already achieved in uno:2p (1600 MMR = SSL)
+    await upsertPlayerPlaylistRank({
+      playerId: calPlayerId,
+      mode: 'uno',
+      playerCount: 2,
+      mmr: 1600,
+      rankTier: 'SSL',
+      won: true,
+    });
+
+    // Play 9 matches in scala40:2p staying around low MMR
+    for (let i = 1; i <= 9; i++) {
+      await upsertPlayerPlaylistRank({
+        playerId: calPlayerId,
+        mode: 'scala40',
+        playerCount: 2,
+        mmr: 100,
+        rankTier: 'Bronze I',
+        won: i % 2 === 0,
+      });
+    }
+
+    // 10th classification match completes -> system detects high skill and calibrates upward!
+    const tenthRes = await fetch(`${baseUrl}/api/progression/settle-match`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${calToken}` },
+      body: JSON.stringify({
+        matchId: `cal_tenth_${Date.now()}`,
+        mode: 'scala40',
+        playerCount: 2,
+        isRanked: true,
+        won: true,
+        score: 20,
+        opponentScore: 50,
+        turnCount: 8,
+        durationSec: 30,
+        cardsPlayed: 6,
+      }),
+    });
+    expect(tenthRes.status).toBe(200);
+    const body = (await tenthRes.json()) as {
+      receipt: {
+        placementMatchesPlayed: number;
+        calibratedUpward: boolean;
+        calibrationBonusMmr: number;
+        mmrAfter: number;
+      };
+    };
+    expect(body.receipt.placementMatchesPlayed).toBe(10);
+    expect(body.receipt.calibratedUpward).toBe(true);
+    expect(body.receipt.mmrAfter).toBe(1200);
+    expect(body.receipt.calibrationBonusMmr).toBeGreaterThan(900);
   });
 });

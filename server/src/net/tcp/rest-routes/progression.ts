@@ -4,11 +4,19 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
-import { GAME_MODES, getRankFromMMR, type MatchRewardReceipt } from '@uno/shared';
+import {
+  GAME_MODES,
+  getRankFromMMR,
+  getSubDivision,
+  PLACEMENT_MATCHES_REQUIRED,
+  type MatchRewardReceipt,
+  type PlaylistRankEntry,
+} from '@uno/shared';
 import { authRequired } from '../../../auth/middleware.js';
 import { logger } from '../../../config/logger.js';
 import { getOrCreateBattleCard } from '../../../persistence/postgres/repositories/battle-card.js';
 import { getOrInitPlayerChallenges } from '../../../persistence/postgres/repositories/challenges.js';
+import { getActiveMatchmakingBan } from '../../../persistence/postgres/repositories/matchmaking-bans.js';
 import { listPlayerPlaylistRanks } from '../../../persistence/postgres/repositories/playlist-ranks.js';
 import { findPlayerById } from '../../../persistence/postgres/repositories/players.js';
 import { getPlayerBalances } from '../../../persistence/postgres/repositories/transactions.js';
@@ -110,13 +118,25 @@ progressionRouter.post('/settle-match', authRequired, settleLimiter, async (req,
 progressionRouter.get('/snapshot', authRequired, async (req, res) => {
   const playerId = req.user!.sub;
   try {
-    const [player, balances, battleCard, challenges, playlistRanks] = await Promise.all([
+    const [player, balances, battleCard, challenges, rawPlaylistRanks, activeBan] = await Promise.all([
       findPlayerById(playerId),
       getPlayerBalances(playerId).catch(() => ({ vcard: 0, tournamentCredits: 0 })),
       getOrCreateBattleCard(playerId),
       getOrInitPlayerChallenges(playerId),
-      listPlayerPlaylistRanks(playerId).catch(() => ({})),
+      listPlayerPlaylistRanks(playerId).catch(() => ({} as Record<string, PlaylistRankEntry>)),
+      getActiveMatchmakingBan(playerId).catch(() => null),
     ]);
+    const playlistRanks: Record<string, PlaylistRankEntry> = {};
+    for (const [k, entry] of Object.entries(rawPlaylistRanks)) {
+      const matchesPlayed = entry.wins + entry.losses;
+      playlistRanks[k] = {
+        ...entry,
+        matchesPlayed,
+        placementRequired: PLACEMENT_MATCHES_REQUIRED,
+        placementComplete: matchesPlayed >= PLACEMENT_MATCHES_REQUIRED,
+        subDivision: getSubDivision(entry.mmr),
+      };
+    }
     const mmr = Number(player?.mmr ?? 400);
     const activeChallenges = challenges.filter((c) => !c.claimed).length;
     const claimableChallenges = challenges.filter(
@@ -129,6 +149,7 @@ progressionRouter.get('/snapshot', authRequired, async (req, res) => {
       mmr,
       rankTier: player?.rank_tier ?? getRankFromMMR(mmr),
       playlistRanks,
+      activeBan,
       vcardBalance: Number(player?.vcard ?? balances.vcard),
       tournamentCredits: balances.tournamentCredits,
       battleCard: {

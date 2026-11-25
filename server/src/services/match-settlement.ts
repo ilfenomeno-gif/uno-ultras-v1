@@ -7,9 +7,12 @@ import {
   formatPlaylistKey,
   GAME_MODES,
   getRankFromMMR,
+  getSubDivision,
   normalizePlaylistPlayerCount,
+  PLACEMENT_MATCHES_REQUIRED,
   type GameMode,
   type MatchRewardReceipt,
+  type RankSubDivision,
 } from '@uno/shared';
 import { logger } from '../config/logger.js';
 import { settleRankedMatchForPlayers } from '../matchmaking/mmr.js';
@@ -109,7 +112,17 @@ export async function settleFinishedMatchWithReceipts(
 
     const mmrUpdates = new Map<
       string,
-      { before: number; after: number; delta: number; rankTier: string }
+      {
+        before: number;
+        after: number;
+        delta: number;
+        rankTier: string;
+        rankDemoted: boolean;
+        subDivision: RankSubDivision;
+        placementMatchesPlayed?: number;
+        calibratedUpward?: boolean;
+        calibrationBonusMmr?: number;
+      }
     >();
     if (input.isRanked && rankedHumans.size > 0) {
       const humanMmrs = [...rankedHumans.values()].map((h) => h.mmr);
@@ -138,6 +151,15 @@ export async function settleFinishedMatchWithReceipts(
           after: s.mmrAfter,
           delta: s.delta,
           rankTier: s.rankTier,
+          rankDemoted: s.rankDemoted,
+          subDivision: s.subDivision,
+          ...(s.placementMatchesPlayed !== undefined
+            ? { placementMatchesPlayed: s.placementMatchesPlayed }
+            : {}),
+          ...(s.calibratedUpward ? { calibratedUpward: true } : {}),
+          ...(s.calibrationBonusMmr !== undefined
+            ? { calibrationBonusMmr: s.calibrationBonusMmr }
+            : {}),
         });
       }
     }
@@ -254,6 +276,18 @@ export async function settleFinishedMatchWithReceipts(
           rankBefore,
           rankAfter,
           rankPromoted,
+          ...(mmrInfo?.rankDemoted ? { rankDemoted: true } : {}),
+          subDivision: mmrInfo?.subDivision ?? getSubDivision(mmrAfter),
+          ...(mmrInfo?.placementMatchesPlayed !== undefined
+            ? {
+                placementMatchesPlayed: mmrInfo.placementMatchesPlayed,
+                placementRequired: PLACEMENT_MATCHES_REQUIRED,
+              }
+            : {}),
+          ...(mmrInfo?.calibratedUpward ? { calibratedUpward: true } : {}),
+          ...(mmrInfo?.calibrationBonusMmr !== undefined
+            ? { calibrationBonusMmr: mmrInfo.calibrationBonusMmr }
+            : {}),
           xpEarned,
           battleCardLevelAfter,
           vcardEarned,

@@ -391,7 +391,14 @@ export async function enqueueMatchmaking(payload: {
   mode: string;
   ranked: boolean;
   targetPlayers: number;
-}): Promise<{ ticket: { ticketId: string }; matched: Record<string, unknown> | null }> {
+  partyMemberIds?: readonly string[];
+  partyMemberMmrs?: readonly number[];
+  isTournament?: boolean;
+}): Promise<{
+  ticket: { ticketId: string };
+  effectivePartyMmr?: number;
+  matched: Record<string, unknown> | null;
+}> {
   return postJson('/matchmaking/enqueue', payload, true);
 }
 
@@ -455,6 +462,12 @@ export async function fetchProgressionSnapshot(): Promise<{
   mmr: number;
   rankTier: string;
   playlistRanks?: Readonly<Record<string, PlaylistRankEntry>>;
+  activeBan?: {
+    expiresAt: string;
+    remainingSeconds: number;
+    offenseCount: number;
+    reason: string;
+  } | null;
   vcardBalance: number;
   tournamentCredits: number;
   battleCard: { tier: string; level: number; xp: number };

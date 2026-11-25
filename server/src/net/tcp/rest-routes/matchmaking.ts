@@ -4,14 +4,20 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
-import { GAME_MODES, type GameMode } from '@uno/shared';
+import {
+  checkPartyRankDisparity,
+  computeWeightedPartyMMR,
+  GAME_MODES,
+  type GameMode,
+} from '@uno/shared';
 import { authRequired } from '../../../auth/middleware.js';
 import { matchmakingQueue } from '../../../matchmaking/queue.js';
 import {
   pushRedisQueueMember,
   removeRedisQueueMembers,
 } from '../../../matchmaking/redis-queue.js';
-import { findPlayerById } from '../../../persistence/postgres/repositories/players.js';
+import { getActiveMatchmakingBan } from '../../../persistence/postgres/repositories/matchmaking-bans.js';
+import { getPlayerPlaylistRank } from '../../../persistence/postgres/repositories/playlist-ranks.js';
 import {
   cacheMatchmakingTicket,
   getMatchmakingTicket,
@@ -26,6 +32,9 @@ const EnqueueSchema = z.object({
   mode: z.enum(GAME_MODES).default('uno'),
   ranked: z.boolean().default(false),
   targetPlayers: z.number().int().min(2).max(4).default(4),
+  partyMemberIds: z.array(z.string().min(1).max(80)).max(3).optional(),
+  partyMemberMmrs: z.array(z.number().min(0).max(10000)).max(3).optional(),
+  isTournament: z.boolean().optional(),
 });
 
 matchmakingRouter.post('/enqueue', authRequired, mmLimiter, async (req, res) => {
@@ -37,31 +46,81 @@ matchmakingRouter.post('/enqueue', authRequired, mmLimiter, async (req, res) => 
 
   const playerId = req.user!.sub;
   const username = req.user!.username;
+
+  if (parsed.data.ranked) {
+    const activeBan = await getActiveMatchmakingBan(playerId).catch(() => null);
+    if (activeBan) {
+      res.status(403).json({
+        error: `Ban dal matchmaking attivo (${Math.ceil(activeBan.remainingSeconds / 60)} min rimanenti): ${activeBan.reason}`,
+        ban: activeBan,
+      });
+      return;
+    }
+  }
+
   let mmr = 0;
   try {
-    const player = await findPlayerById(playerId);
-    if (player) mmr = Number(player.mmr);
+    const playlistEntry = await getPlayerPlaylistRank(
+      playerId,
+      parsed.data.mode,
+      parsed.data.targetPlayers,
+    );
+    mmr = playlistEntry.mmr;
   } catch {
     // Fallback mmr 0 se DB non raggiungibile in unit test
   }
+
+  const partyMmrs: number[] = [mmr];
+  if (parsed.data.partyMemberIds?.length) {
+    const fetched = await Promise.all(
+      parsed.data.partyMemberIds.map((id) =>
+        getPlayerPlaylistRank(id, parsed.data.mode, parsed.data.targetPlayers)
+          .then((r) => r.mmr)
+          .catch(() => 0),
+      ),
+    );
+    partyMmrs.push(...fetched);
+  }
+  if (parsed.data.partyMemberMmrs?.length) {
+    partyMmrs.push(...parsed.data.partyMemberMmrs);
+  }
+
+  const disparity = checkPartyRankDisparity({
+    memberMmrs: partyMmrs,
+    targetPlayers: parsed.data.targetPlayers,
+    mode: parsed.data.mode,
+    ranked: parsed.data.ranked,
+    ...(parsed.data.isTournament !== undefined
+      ? { isTournament: parsed.data.isTournament }
+      : {}),
+  });
+  if (!disparity.allowed) {
+    res.status(403).json({
+      error: disparity.reason ?? 'Dislivello di grado eccessivo nel gruppo',
+      disparity,
+    });
+    return;
+  }
+
+  const effectiveMmr = computeWeightedPartyMMR(partyMmrs, { ranked: parsed.data.ranked });
 
   const ticket = matchmakingQueue.enqueue({
     playerId,
     username,
     mode: parsed.data.mode,
     ranked: parsed.data.ranked,
-    mmr,
+    mmr: effectiveMmr,
     targetPlayers: parsed.data.targetPlayers,
   });
 
-  await pushRedisQueueMember(parsed.data.mode, parsed.data.ranked, playerId, mmr);
+  await pushRedisQueueMember(parsed.data.mode, parsed.data.ranked, playerId, effectiveMmr);
   await cacheMatchmakingTicket(ticket.ticketId, {
     status: 'searching',
     ticketId: ticket.ticketId,
     playerId,
     mode: parsed.data.mode,
     ranked: parsed.data.ranked,
-    mmr,
+    mmr: effectiveMmr,
   });
 
   const formed = matchmakingQueue.popMatches();
@@ -83,6 +142,8 @@ matchmakingRouter.post('/enqueue', authRequired, mmLimiter, async (req, res) => 
 
   res.status(200).json({
     ticket,
+    effectivePartyMmr: effectiveMmr,
+    disparity,
     matched: myMatch,
     queueSize: matchmakingQueue.size(),
   });

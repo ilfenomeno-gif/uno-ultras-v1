@@ -139,7 +139,7 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
         <div data-role="rematch-status" style="font-size:0.85rem;margin:0.4rem 0;"></div>
         <div class="battle-actions" style="justify-content:center;margin-top:0.6rem;">
           <button type="button" class="launcher-play-btn" data-action="rematch">
-            RIVINCITA (1-TAP)
+            FORMA GRUPPO / GIOCA DI NUOVO
           </button>
           <button type="button" class="hint-btn" data-action="back-lobby">
             TORNA IN LOBBY
@@ -380,9 +380,31 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
       if (myReceipt) {
         mcpRewardsEl.hidden = false;
         const mmrSign = myReceipt.mmrDelta >= 0 ? `+${myReceipt.mmrDelta}` : String(myReceipt.mmrDelta);
+        const subDivText = myReceipt.subDivision ? ` · Div. ${myReceipt.subDivision}` : '';
+        const statusTag = myReceipt.rankPromoted
+          ? ' · PROMOZIONE!'
+          : myReceipt.rankDemoted
+            ? ' · RETROCESSIONE'
+            : '';
+        const placementDone =
+          myReceipt.placementRequired !== undefined &&
+          myReceipt.placementMatchesPlayed !== undefined;
         const items: Array<[string, string]> = [
           ['MMR', `${myReceipt.isRanked ? mmrSign : 'Casuale'} (${myReceipt.mmrAfter})`],
-          ['Grado', `${myReceipt.rankAfter}${myReceipt.rankPromoted ? ' · PROMOZIONE!' : ''}`],
+          ['Grado', `${myReceipt.rankAfter}${subDivText}${statusTag}`],
+          ...(placementDone &&
+          myReceipt.placementMatchesPlayed! <= myReceipt.placementRequired!
+            ? [
+                [
+                  'Classificazione',
+                  `${myReceipt.placementMatchesPlayed}/${myReceipt.placementRequired}${
+                    myReceipt.calibratedUpward
+                      ? ` · Calibrazione anti-smurf (+${myReceipt.calibrationBonusMmr ?? 0} MMR)`
+                      : ''
+                  }`,
+                ] as [string, string],
+              ]
+            : []),
           ['Battle Card', `+${myReceipt.xpEarned} XP (Lv.${myReceipt.battleCardLevelAfter})`],
           ['V-Card', `+${myReceipt.vcardEarned} (Tot ${myReceipt.vcardBalanceAfter})`],
           ['Sfide', `+${myReceipt.challengesProgressed} aggiornate`],
@@ -697,6 +719,15 @@ export function mountGameView(container: HTMLElement, opts: GameViewOptions): ()
         rankTier: myReceipt.rankAfter as RankTier,
         wins: (prev?.wins ?? 0) + (myReceipt.won ? 1 : 0),
         losses: (prev?.losses ?? 0) + (myReceipt.won ? 0 : 1),
+        ...(myReceipt.placementMatchesPlayed !== undefined
+          ? { matchesPlayed: myReceipt.placementMatchesPlayed }
+          : {}),
+        ...(myReceipt.placementRequired !== undefined
+          ? { placementRequired: myReceipt.placementRequired }
+          : {}),
+        ...(myReceipt.subDivision !== undefined
+          ? { subDivision: myReceipt.subDivision }
+          : {}),
       };
       const mergedPlaylists: Record<string, PlaylistRankEntry> = {
         ...(curProfile?.playlistRanks ?? {}),

@@ -4,6 +4,18 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
+## Sessione 2026-11-25 (Parte 8) — Sistema Rank Competitivo Avanzato (Classificazione, Anti-Smurfing, Media Ponderata Gruppo, Dislivello 3 Gradi & Ban Abbandono)
+
+- **Obiettivo**: allineare completamente il sistema competitivo alle regole richieste: promozioni/retrocessioni basate su risultato e difficoltà avversari, divisioni intra-grado (`I–IV`), `10` partite di classificazione con calibrazione anti-smurfing involontario verso l'alto in base alle altre playlist competitive, abilità ponderata di gruppo (con peso maggiore sul giocatore `Campione I+` e casual più vicino alla media), limite massimo di `3` livelli di dislivello per gruppi sottodimensionati in competitive/tornei (esclusi 2v2/extra), funzione **Forma Gruppo / Gioca di Nuovo** e sanzione per abbandono anticipato (sconfitta registrata, penalità MMR aggravata per il primo a uscire e ban progressivo dal matchmaking).
+- **Stato Lavori**:
+  - `[x]` Motore condiviso `shared/src/engine/ranked/competitive-rules.ts` (`getSubDivision`, `computeWeightedPartyMMR`, `checkPartyRankDisparity`, `computeAntiSmurfPlacementCalibration`, `computeAbandonBanDurationMinutes`, `computeAbandonMmrPenalty`) riesportato da `shared/src/index.ts`, con contratti estesi in `shared/src/types/rank.ts` e `shared/src/protocol/messages.ts`.
+  - `[x]` Migrazione SQL `0010_matchmaking_bans.sql`, fallback dev `dev-store.ts` e repository `server/src/persistence/postgres/repositories/matchmaking-bans.ts` (`getActiveMatchmakingBan`, `recordMatchAbandonment` con ban `5 → 10 → 20 → 60 min` e penalità aggravata al primo leaver).
+  - `[x]` Integrazione autorevole su `server/src/matchmaking/mmr.ts` (avversari ponderati, calibrazione 10° match da altre playlist competitive, sotto-divisioni e retrocessioni), `match-settlement.ts`, `rest-routes/matchmaking.ts` (blocco ban `403`, controllo dislivello `3` gradi, `effectivePartyMmr`), `rest-routes/progression.ts` (`activeBan`, `matchesPlayed`, `subDivision`) e `UnoRoom` (`onJoin` / `onLeave` abbandono anticipato).
+  - `[x]` UI Client in `tab-play.ts` / `lobby.css` (stato `Classificazione X/10`, divisione `I–IV`, badge `BAN CODA`, modale `?` *Come funzionano i Rank Competitivi*), `rest-client.ts` e `game-view/table.ts` (ricevute con classificazione, calibrazione anti-smurf, retrocessioni e pulsante `FORMA GRUPPO / GIOCA DI NUOVO`).
+  - `[x]` Test unitari e integrazione in `shared/tests/engine/ranks.test.ts` (`4` nuovi test) e `server/tests/integration/progression-mcp.test.ts` (`3` nuovi test), con `npm run ci` verde (**27 suite Vitest / 173 test passati**: shared `78`, server `44`, client `51`; `0` errori ESLint/TS; Vite `179` moduli) e SHA-256 `contenuto-game.md` intatto (`83CAE3C057B35C22B460CC6F61BCF11AA355D1DB5F9EB4F2EC40517B2A1BD4D9`).
+
+---
+
 ## Sessione 2026-11-25 (Parte 7) — Identità Bot (Nome, Rank, Titolo), Loadout Armadietto in Partita & Test Visivi Chrome
 
 - **Obiettivo**: mostrare nome, rank e titolo di tutti i bot in partita (UNO + 7 Mini-Giochi), collegare live l'**Armadietto** alle partite rendendo visibili ogni cosmetico equipaggiato (`avatar`, `frame`, `cardStyle`, `title`, `theme`), ed eseguire test manuali visivi in browser reale Chrome per verificare il collegamento end-to-end.

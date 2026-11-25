@@ -8,10 +8,16 @@ import {
   RANK_TIERS,
   SSL_MMR_THRESHOLD,
   calculateEloDelta,
+  checkPartyRankDisparity,
+  computeAbandonBanDurationMinutes,
+  computeAbandonMmrPenalty,
+  computeAntiSmurfPlacementCalibration,
   computeEffectiveK,
+  computeWeightedPartyMMR,
   getKBase,
   getRankFromMMR,
   getRankInfo,
+  getSubDivision,
   rankFromMMR,
 } from '../../src/index.js';
 
@@ -113,5 +119,94 @@ describe('Ranks & Adaptive ELO (Opzione A: 22 tier, SSL 1600)', () => {
     expect(upset.kEff).toBe(47);
     expect(upset.upsetBonus).toBe(10);
     expect(upset.delta).toBe(50);
+  });
+
+  it('calcola sotto-divisioni I..IV e null per SSL', () => {
+    expect(getSubDivision(0)).toBe('I');
+    expect(getSubDivision(180)).toBe('IV');
+    expect(getSubDivision(1600)).toBeNull();
+  });
+
+  it('calcola abilita ponderata di gruppo (vicina al max su divari ampi / Champion+, piu vicina alla media in Casuale)', () => {
+    const similar = computeWeightedPartyMMR([810, 840], { ranked: true });
+    expect(similar).toBeGreaterThanOrEqual(825);
+    expect(similar).toBeLessThanOrEqual(835);
+
+    const wideGap = computeWeightedPartyMMR([400, 1100], { ranked: true });
+    expect(wideGap).toBeGreaterThan(950);
+
+    const championCarry = computeWeightedPartyMMR([400, 1300], { ranked: true });
+    expect(championCarry).toBeGreaterThanOrEqual(1160);
+
+    const casualGroup = computeWeightedPartyMMR([400, 1300], { ranked: false });
+    expect(casualGroup).toBeLessThan(wideGap);
+  });
+
+  it('applica il limite di 3 gradi solo ai gruppi sottodimensionati in competitive/torneo', () => {
+    // Platinum II (867) vs Diamond III (1134) = 4 livelli -> bloccato in 3G ranked UNO
+    const blocked = checkPartyRankDisparity({
+      memberMmrs: [867, 1134],
+      targetPlayers: 3,
+      mode: 'uno',
+      ranked: true,
+    });
+    expect(blocked.allowed).toBe(false);
+    expect(blocked.tierGap).toBe(4);
+
+    // Platinum III (934) vs Diamond III (1134) = 3 livelli -> consentito
+    const allowedEdge = checkPartyRankDisparity({
+      memberMmrs: [934, 1134],
+      targetPlayers: 3,
+      mode: 'uno',
+      ranked: true,
+    });
+    expect(allowedEdge.allowed).toBe(true);
+    expect(allowedEdge.tierGap).toBe(3);
+
+    // 2 giocatori in 2G (gruppo completo) o modalita extra -> consentito anche con divario > 3
+    expect(
+      checkPartyRankDisparity({
+        memberMmrs: [0, 1600],
+        targetPlayers: 2,
+        mode: 'uno',
+        ranked: true,
+      }).allowed,
+    ).toBe(true);
+    expect(
+      checkPartyRankDisparity({
+        memberMmrs: [0, 1600],
+        targetPlayers: 3,
+        mode: 'scala40',
+        ranked: true,
+      }).allowed,
+    ).toBe(true);
+  });
+
+  it('calibra verso l alto al 10° match (anti-smurfing involontario) e penalizza abbandoni + primo leaver', () => {
+    const cal = computeAntiSmurfPlacementCalibration({
+      currentPlaylistMmr: 250,
+      matchesPlayedAfter: 10,
+      otherCompetitiveMmrs: [1600],
+    });
+    expect(cal.applied).toBe(true);
+    expect(cal.calibratedMmr).toBe(1200);
+    expect(cal.bonusMmr).toBe(950);
+
+    const notYet = computeAntiSmurfPlacementCalibration({
+      currentPlaylistMmr: 250,
+      matchesPlayedAfter: 9,
+      otherCompetitiveMmrs: [1600],
+    });
+    expect(notYet.applied).toBe(false);
+
+    expect(computeAbandonBanDurationMinutes(1)).toBe(5);
+    expect(computeAbandonBanDurationMinutes(2)).toBe(10);
+    expect(computeAbandonBanDurationMinutes(3)).toBe(20);
+    expect(computeAbandonBanDurationMinutes(4)).toBe(60);
+
+    const first = computeAbandonMmrPenalty({ playerMMR: 800, opponentMMR: 800, isFirstLeaver: true });
+    const follower = computeAbandonMmrPenalty({ playerMMR: 800, opponentMMR: 800, isFirstLeaver: false });
+    expect(first.newMMR).toBeLessThan(follower.newMMR);
+    expect(first.extraFirstLeaverPenalty).toBe(15);
   });
 });

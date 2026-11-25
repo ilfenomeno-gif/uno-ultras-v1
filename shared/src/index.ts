@@ -26,6 +26,7 @@ export * from './schemas/index.js';
 // UNO Engine & Mini-Games
 export * from './engine/uno/index.js';
 export * from './engine/ranked/elo.js';
+export * from './engine/ranked/competitive-rules.js';
 export * from './engine/mini-games/index.js';
 
 // AI Decision Engine & Gemini Contracts

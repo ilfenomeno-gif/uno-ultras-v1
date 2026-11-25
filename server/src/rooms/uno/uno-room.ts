@@ -33,6 +33,10 @@ import { verifyAccessToken } from '../../auth/jwt-service.js';
 import { adviseBotMove } from '../../ai/gemini-bot-advisor.js';
 import { featureFlags } from '../../config/feature-flags.js';
 import { getEquippedLoadout } from '../../persistence/postgres/repositories/inventory.js';
+import {
+  getActiveMatchmakingBan,
+  recordMatchAbandonment,
+} from '../../persistence/postgres/repositories/matchmaking-bans.js';
 import { getPlayerPlaylistRank } from '../../persistence/postgres/repositories/playlist-ranks.js';
 import { RoomActionThrottle } from '../../security/anti-cheat.js';
 import { settleFinishedMatchWithReceipts } from '../../services/match-settlement.js';
@@ -66,6 +70,7 @@ const BOT_AVATAR_POOL = [
   'avatar_chrono_ace',
 ] as const;
 const BOT_CARDBACK_POOL = ['back_default', 'back_arcade_grid', 'back_obsidian_holo'] as const;
+const UUID_RE_ROOM = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 interface PlayerVisualMeta {
   avatarId: string;
@@ -105,6 +110,7 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
   private readonly spectators = new Set<string>();
   private readonly rematchVotes = new Set<string>();
   private readonly participantVisuals = new Map<string, PlayerVisualMeta>();
+  private readonly abandonedPlayerIds: string[] = [];
 
   private targetPlayers = 4;
   private fillWithBots = true;
@@ -150,7 +156,7 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
     });
   }
 
-  override onJoin(client: Client, options: UnoRoomJoinOptions): void {
+  override async onJoin(client: Client, options: UnoRoomJoinOptions): Promise<void> {
     let playerId = options.playerId ?? client.sessionId;
     let username =
       options.username?.trim().slice(0, 20) || `Player_${client.sessionId.slice(0, 5)}`;
@@ -162,6 +168,15 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
         username = payload.username;
       } catch {
         throw new Error('Token di autenticazione non valido');
+      }
+    }
+
+    if (this.isRanked && !options.spectator && UUID_RE_ROOM.test(playerId)) {
+      const ban = await getActiveMatchmakingBan(playerId).catch(() => null);
+      if (ban) {
+        throw new Error(
+          `Ban dal matchmaking attivo (${Math.ceil(ban.remainingSeconds / 60)} min rimanenti): ${ban.reason}`,
+        );
       }
     }
 
@@ -302,6 +317,31 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
     }
 
     void presenceService.setOffline(playerId);
+
+    if (
+      this.isRanked &&
+      UUID_RE_ROOM.test(playerId) &&
+      !this.abandonedPlayerIds.includes(playerId)
+    ) {
+      this.abandonedPlayerIds.push(playerId);
+      const isFirstLeaver = this.abandonedPlayerIds.length === 1;
+      const otherMmrs = [...this.participantVisuals.entries()]
+        .filter(([id]) => id !== playerId)
+        .map(([, meta]) => meta.mmr);
+      const opponentMmr =
+        otherMmrs.length > 0
+          ? Math.round(otherMmrs.reduce((s, m) => s + m, 0) / otherMmrs.length)
+          : 400;
+      void recordMatchAbandonment({
+        playerId,
+        username: ps?.username ?? playerId,
+        matchId: this.roomId,
+        mode: 'uno',
+        playerCount: this.targetPlayers,
+        opponentMmr,
+        isFirstLeaver,
+      }).catch(() => undefined);
+    }
 
     // Sostituisce il giocatore disconnesso con un bot strategico
     const fallbackProfile: AIProfile = 'STRAT';

@@ -16,9 +16,15 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 1.5rem;
-  background: linear-gradient(180deg, rgba(6, 9, 20, 0.96) 0%, rgba(10, 14, 30, 0.9) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(6, 9, 20, 0.96) 0%,
+    rgba(10, 14, 30, 0.9) 100%
+  );
   border-bottom: 1px solid rgba(0, 229, 255, 0.28);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.55), 0 1px 0 rgba(184, 77, 255, 0.18);
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.55),
+    0 1px 0 rgba(184, 77, 255, 0.18);
   backdrop-filter: var(--glass-blur);
   z-index: 20;
 }
@@ -53,7 +59,11 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-text-muted);
-  transition: color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease, transform 0.15s ease;
+  transition:
+    color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.15s ease;
   white-space: nowrap;
 }
 
@@ -83,7 +93,10 @@
   font-size: 0.78rem;
   letter-spacing: 0.05em;
   color: #5eead4;
-  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
 }
 
 .top-bar-social-btn:hover {
@@ -107,7 +120,10 @@
   font-family: var(--font-mono);
   font-size: 0.75rem;
   color: #ff8a9a;
-  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
 }
 
 .top-bar-logout-btn:hover {
@@ -206,7 +222,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out), background 0.2s;
+  transition:
+    transform 0.2s var(--ease-out),
+    box-shadow 0.2s var(--ease-out),
+    background 0.2s;
 }
 
 .party-plus-btn:hover {
@@ -264,7 +283,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle, rgba(245, 200, 66, 0.22), transparent 72%);
+  background: radial-gradient(
+    circle,
+    rgba(245, 200, 66, 0.22),
+    transparent 72%
+  );
 }
 
 .card-3d-label {
@@ -389,7 +412,9 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
   box-shadow: 0 0 22px var(--color-gold-glow);
-  transition: transform 0.18s var(--ease-out), box-shadow 0.18s;
+  transition:
+    transform 0.18s var(--ease-out),
+    box-shadow 0.18s;
 }
 
 .launcher-play-btn:hover:not(:disabled) {
@@ -467,6 +492,42 @@
   font-family: var(--font-mono);
   font-size: 0.78rem;
   color: var(--color-cyan);
+}
+
+.rank-guide-btn {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 229, 255, 0.5);
+  background: rgba(8, 18, 40, 0.85);
+  color: #7dd3fc;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.rank-ban-pill {
+  display: inline-block;
+  align-self: flex-start;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(248, 113, 113, 0.6);
+  color: #fca5a5;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.rank-guide-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: #dbeafe;
 }
 
 /* ── Social Drawer (Right Slide-In) ──────────────────────── */

@@ -17,6 +17,17 @@ export interface PlaylistRankEntry {
   readonly rankTier: RankTier;
   readonly wins: number;
   readonly losses: number;
+  readonly matchesPlayed?: number;
+  readonly placementRequired?: number;
+  readonly placementComplete?: boolean;
+  readonly subDivision?: 'I' | 'II' | 'III' | 'IV' | null;
+}
+
+export interface ActiveMatchmakingBan {
+  readonly expiresAt: string;
+  readonly remainingSeconds: number;
+  readonly offenseCount: number;
+  readonly reason: string;
 }
 
 export function normalizePlaylistPlayerCount(raw: number): PlaylistPlayerCount {

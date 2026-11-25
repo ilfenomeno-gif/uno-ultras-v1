@@ -111,6 +111,13 @@ export interface DevPlaylistRankRecord {
   losses: number;
 }
 
+export interface DevMatchmakingBanRecord {
+  banExpiresAt: string;
+  offenseCount: number;
+  lastOffenseAt: string;
+  lastReason: string;
+}
+
 export interface DevStateSnapshot {
   tournamentCredits: Record<string, number>;
   loadouts: Record<string, DevLoadout>;
@@ -125,6 +132,7 @@ export interface DevStateSnapshot {
   idempotencyBalances: Record<string, number>;
   leaderboards: Record<string, Record<string, { username: string; mmr: number }>>;
   playlistRanks: Record<string, Record<string, DevPlaylistRankRecord>>;
+  matchmakingBans: Record<string, DevMatchmakingBanRecord>;
 }
 
 const TEST_SUFFIX = process.env['VITEST'] ? `-vitest-${process.pid}` : '';
@@ -146,6 +154,7 @@ const EMPTY_STATE = (): DevStateSnapshot => ({
   idempotencyBalances: {},
   leaderboards: {},
   playlistRanks: {},
+  matchmakingBans: {},
 });
 
 export function isDbUnavailableError(err: unknown): boolean {
@@ -186,6 +195,7 @@ function loadDevStateFromDisk(): DevStateSnapshot {
       idempotencyBalances: raw.idempotencyBalances ?? {},
       leaderboards: raw.leaderboards ?? {},
       playlistRanks: raw.playlistRanks ?? {},
+      matchmakingBans: raw.matchmakingBans ?? {},
     };
   } catch {
     return base;

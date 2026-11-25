@@ -4,11 +4,22 @@
 
 import {
   calculateEloDelta,
+  computeAntiSmurfPlacementCalibration,
+  computeWeightedPartyMMR,
+  formatPlaylistKey,
   getRankFromMMR,
+  getSubDivision,
+  PLACEMENT_MATCHES_REQUIRED,
+  RANK_TIERS,
   type GameMode,
   type PlaylistPlayerCount,
+  type RankSubDivision,
 } from '@uno/shared';
-import { upsertPlayerPlaylistRank } from '../persistence/postgres/repositories/playlist-ranks.js';
+import {
+  getPlayerPlaylistRank,
+  listPlayerPlaylistRanks,
+  upsertPlayerPlaylistRank,
+} from '../persistence/postgres/repositories/playlist-ranks.js';
 import { updatePlayerRank } from '../persistence/postgres/repositories/players.js';
 import { updateLeaderboardScore } from '../persistence/redis/leaderboard.js';
 
@@ -31,36 +42,81 @@ export async function settleRankedMatchForPlayers(input: {
     mmrAfter: number;
     delta: number;
     rankTier: string;
+    rankDemoted: boolean;
+    subDivision: RankSubDivision;
+    placementMatchesPlayed?: number;
+    calibratedUpward?: boolean;
+    calibrationBonusMmr?: number;
   }[]
 > {
-  const avgMMR =
-    input.participants.reduce((sum, p) => sum + p.mmr, 0) /
-    Math.max(1, input.participants.length);
-
   const results: {
     playerId: string;
     mmrBefore: number;
     mmrAfter: number;
     delta: number;
     rankTier: string;
+    rankDemoted: boolean;
+    subDivision: RankSubDivision;
+    placementMatchesPlayed?: number;
+    calibratedUpward?: boolean;
+    calibrationBonusMmr?: number;
   }[] = [];
 
   for (const p of input.participants) {
     if (p.isBot) continue;
     const won = p.playerId === input.winnerId;
+    const opponents = input.participants.filter((o) => o.playerId !== p.playerId);
+    const weightedOppMmr =
+      opponents.length > 0
+        ? computeWeightedPartyMMR(
+            opponents.map((o) => o.mmr),
+            { ranked: true },
+          )
+        : p.mmr;
+
     const elo = calculateEloDelta({
       playerMMR: p.mmr,
-      opponentMMR: Math.round(avgMMR),
+      opponentMMR: weightedOppMmr,
       won,
       ...(input.playlistMultiplier !== undefined
         ? { playlistMultiplier: input.playlistMultiplier }
         : {}),
     });
-    const mmrAfter = elo.newMMR;
-    const rankTier = elo.newTier ?? getRankFromMMR(mmrAfter);
+
+    let mmrAfter = elo.newMMR;
+    let rankTier = elo.newTier ?? getRankFromMMR(mmrAfter);
+    let placementMatchesPlayed: number | undefined;
+    let calibratedUpward = false;
+    let calibrationBonusMmr = 0;
+    let prevTier = elo.previousTier;
 
     try {
       if (input.mode && input.playerCount) {
+        const [prevEntry, allRanks] = await Promise.all([
+          getPlayerPlaylistRank(p.playerId, input.mode, input.playerCount),
+          listPlayerPlaylistRanks(p.playerId),
+        ]);
+        prevTier = prevEntry.rankTier;
+        placementMatchesPlayed = prevEntry.wins + prevEntry.losses + 1;
+        const currentKey = formatPlaylistKey(input.mode, input.playerCount);
+        const otherCompetitiveMmrs = Object.entries(allRanks)
+          .filter(([k, r]) => k !== currentKey && r.wins + r.losses > 0)
+          .map(([, r]) => r.mmr);
+
+        if (placementMatchesPlayed === PLACEMENT_MATCHES_REQUIRED) {
+          const cal = computeAntiSmurfPlacementCalibration({
+            currentPlaylistMmr: mmrAfter,
+            matchesPlayedAfter: placementMatchesPlayed,
+            otherCompetitiveMmrs,
+          });
+          if (cal.applied) {
+            mmrAfter = cal.calibratedMmr;
+            rankTier = getRankFromMMR(mmrAfter);
+            calibratedUpward = true;
+            calibrationBonusMmr = cal.bonusMmr;
+          }
+        }
+
         const { peakMmr } = await upsertPlayerPlaylistRank({
           playerId: p.playerId,
           mode: input.mode,
@@ -82,12 +138,17 @@ export async function settleRankedMatchForPlayers(input: {
       // Best effort if DB offline in unit test
     }
 
+    const rankDemoted = RANK_TIERS.indexOf(rankTier) < RANK_TIERS.indexOf(prevTier);
     results.push({
       playerId: p.playerId,
       mmrBefore: p.mmr,
       mmrAfter,
-      delta: elo.delta,
+      delta: mmrAfter - p.mmr,
       rankTier,
+      rankDemoted,
+      subDivision: getSubDivision(mmrAfter),
+      ...(placementMatchesPlayed !== undefined ? { placementMatchesPlayed } : {}),
+      ...(calibratedUpward ? { calibratedUpward, calibrationBonusMmr } : {}),
     });
   }
   return results;
