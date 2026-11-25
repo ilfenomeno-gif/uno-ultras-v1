@@ -15,6 +15,7 @@ import { getRedisClient } from './client.js';
 const LEADERBOARD_KEY = 'leaderboard:mmr';
 
 export type LeaderboardPlayerCount = 2 | 3 | 4;
+export type LeaderboardMode = 'global' | GameMode;
 
 export interface LeaderboardEntry {
   rank: number;
@@ -46,8 +47,8 @@ function deterministicHash(str: string): number {
 }
 
 function generateBucketContenders(
-  mode: GameMode,
-  playerCount: LeaderboardPlayerCount,
+  mode: LeaderboardMode,
+  playerCount: LeaderboardPlayerCount | 'all',
   excludeNames: ReadonlySet<string>,
 ): LeaderboardEntry[] {
   const seedOffset = deterministicHash(`${mode}:${playerCount}`);
@@ -63,7 +64,11 @@ function generateBucketContenders(
     const mmr = Math.max(450, Math.min(2250, curveMmr));
     const wins = Math.max(12, Math.round((mmr - 200) / 5.2 + ((seedOffset + idx) % 14)));
     const winRate = Math.max(49, Math.min(84, Math.round(52 + (mmr - 450) / 58)));
-    const pickedTitle = pickPrestigiousTitleForMMR(mmr, mode, idx + seedOffset);
+    const pickedTitle = pickPrestigiousTitleForMMR(
+      mmr,
+      mode === 'global' ? undefined : mode,
+      idx + seedOffset,
+    );
 
     out.push({
       rank: 0,
@@ -116,11 +121,16 @@ export async function updateLeaderboardScore(
 
 export async function getTopLeaderboard(
   limit = 100,
-  opts?: { mode?: GameMode; playerCount?: LeaderboardPlayerCount },
+  opts?: { mode?: LeaderboardMode; playerCount?: LeaderboardPlayerCount },
 ): Promise<LeaderboardEntry[]> {
   const safeLimit = Math.max(1, Math.min(100, limit));
-  const mode: GameMode =
-    opts?.mode && (GAME_MODES as readonly string[]).includes(opts.mode) ? opts.mode : 'uno';
+  const isGlobal = !opts?.mode || opts.mode === 'global';
+  const mode: LeaderboardMode = isGlobal
+    ? 'global'
+    : (GAME_MODES as readonly string[]).includes(opts.mode!)
+      ? (opts.mode as GameMode)
+      : 'uno';
+  const titleMode: GameMode | undefined = mode === 'global' ? undefined : mode;
   const playerCount: LeaderboardPlayerCount = opts?.playerCount ?? 4;
   const realEntries: LeaderboardEntry[] = [];
   const seenNames = new Set<string>();
@@ -129,7 +139,7 @@ export async function getTopLeaderboard(
     const client = getRedisClient();
     if (client.isOpen) {
       const key =
-        opts?.mode && opts?.playerCount
+        !isGlobal && opts?.playerCount
           ? leaderboardKeyForBucket(mode, playerCount)
           : LEADERBOARD_KEY;
       const items = await client.zRangeWithScores(key, 0, safeLimit - 1, { REV: true });
@@ -138,7 +148,7 @@ export async function getTopLeaderboard(
         const mmr = Math.round(entry.score);
         if (!seenNames.has(username.toLowerCase())) {
           seenNames.add(username.toLowerCase());
-          const pickedTitle = pickPrestigiousTitleForMMR(mmr, mode, realEntries.length);
+          const pickedTitle = pickPrestigiousTitleForMMR(mmr, titleMode, realEntries.length);
           realEntries.push({
             rank: 0,
             playerId,
@@ -172,7 +182,7 @@ export async function getTopLeaderboard(
         if (!seenNames.has(r.username.toLowerCase())) {
           seenNames.add(r.username.toLowerCase());
           const mmr = Number(r.mmr);
-          const pickedTitle = pickPrestigiousTitleForMMR(mmr, mode, realEntries.length);
+          const pickedTitle = pickPrestigiousTitleForMMR(mmr, titleMode, realEntries.length);
           realEntries.push({
             rank: 0,
             playerId: r.id,
@@ -191,7 +201,7 @@ export async function getTopLeaderboard(
       for (const [k, info] of memoryScores.entries()) {
         if (!seenNames.has(info.username.toLowerCase())) {
           seenNames.add(info.username.toLowerCase());
-          const pickedTitle = pickPrestigiousTitleForMMR(info.mmr, mode, realEntries.length);
+          const pickedTitle = pickPrestigiousTitleForMMR(info.mmr, titleMode, realEntries.length);
           realEntries.push({
             rank: 0,
             playerId: k,
@@ -211,7 +221,7 @@ export async function getTopLeaderboard(
 
   return [
     ...realEntries,
-    ...generateBucketContenders(mode, playerCount, seenNames),
+    ...generateBucketContenders(mode, isGlobal ? 'all' : playerCount, seenNames),
   ]
     .sort((a, b) => b.mmr - a.mmr || a.username.localeCompare(b.username))
     .slice(0, safeLimit)

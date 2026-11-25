@@ -2,7 +2,7 @@
 // UNO ULTRA Client — Top 100 Mondiale Tab (All Modes × 1v1 / 3p / 4p)
 // ============================================================
 
-import { getRankInfo, SSL_MMR_THRESHOLD, type GameMode } from '@uno/shared';
+import { getRankInfo, SSL_MMR_THRESHOLD } from '@uno/shared';
 import { announce } from '../../core/aria-live.js';
 import { playEarcon } from '../../core/audio-earcons.js';
 import { computeSafeLoopIndex, hasBlockedModifier } from '../../core/keyboard-nav.js';
@@ -10,8 +10,10 @@ import { fetchTopLeaderboard, type TopLeaderboardEntry } from '../../net/tcp/res
 import { getProfile } from '../../state/profile-store.js';
 import {
   buildFallbackTop100Entries,
+  TOP100_GLOBAL_OPTION,
   TOP100_MODES,
   TOP100_PLAYER_COUNTS,
+  type Top100Scope,
 } from './top100-helpers.js';
 
 export function createTop100View(): HTMLElement {
@@ -19,10 +21,10 @@ export function createTop100View(): HTMLElement {
   root.className = 'tab-section top100-stage';
   root.setAttribute('aria-label', 'Classifica Top 100 Mondiale');
 
-  let activeMode: GameMode = 'uno';
+  let activeScope: Top100Scope = 'global';
   let activePlayers: 2 | 3 | 4 = 2;
   let entries: readonly TopLeaderboardEntry[] = buildFallbackTop100Entries(
-    activeMode,
+    activeScope,
     activePlayers,
   );
   let loading = false;
@@ -45,7 +47,7 @@ export function createTop100View(): HTMLElement {
   title.textContent = 'TOP 100 MONDIALE';
   const sub = document.createElement('p');
   sub.className = 'top100-hero-sub';
-  sub.textContent = `Seleziona la modalità e il formato (1v1, 3 Giocatori, 4 Giocatori). Soglia SSL: ${SSL_MMR_THRESHOLD}+ MMR.`;
+  sub.textContent = `Classifica Top 100 Globale e per modalità (1v1, 3 Giocatori, 4 Giocatori). Soglia SSL: ${SSL_MMR_THRESHOLD}+ MMR.`;
   heroLeft.append(kicker, title, sub);
 
   const heroRight = document.createElement('div');
@@ -99,27 +101,37 @@ export function createTop100View(): HTMLElement {
   tableCard.className = 'top100-table-card';
 
   const loadLeaderboard = async (): Promise<void> => {
-    const reqMode = activeMode;
+    const reqScope = activeScope;
     const reqPlayers = activePlayers;
     loading = true;
     statusLine.textContent = 'Aggiornamento classifica mondiale…';
     try {
-      const res = await fetchTopLeaderboard(100, {
-        mode: reqMode,
-        players: reqPlayers,
-      });
-      if (reqMode === activeMode && reqPlayers === activePlayers) {
+      const res =
+        reqScope === 'global'
+          ? await fetchTopLeaderboard(100, { mode: 'global' })
+          : await fetchTopLeaderboard(100, { mode: reqScope, players: reqPlayers });
+      if (
+        reqScope === activeScope &&
+        (reqScope === 'global' || reqPlayers === activePlayers)
+      ) {
         entries =
           res.entries.length > 0
             ? res.entries
-            : buildFallbackTop100Entries(reqMode, reqPlayers);
-        const modeMeta = TOP100_MODES.find((m) => m.id === reqMode);
-        const pMeta = TOP100_PLAYER_COUNTS.find((p) => p.count === reqPlayers);
-        statusLine.textContent = `Classifica ${modeMeta?.label ?? reqMode} · ${pMeta?.label ?? `${reqPlayers} Giocatori`} (${entries.length} giocatori)`;
+            : buildFallbackTop100Entries(reqScope, reqPlayers);
+        if (reqScope === 'global') {
+          statusLine.textContent = `Classifica Top 100 Globale · Tutte le modalità (${entries.length} giocatori)`;
+        } else {
+          const modeMeta = TOP100_MODES.find((m) => m.id === reqScope);
+          const pMeta = TOP100_PLAYER_COUNTS.find((p) => p.count === reqPlayers);
+          statusLine.textContent = `Classifica ${modeMeta?.label ?? reqScope} · ${pMeta?.label ?? `${reqPlayers} Giocatori`} (${entries.length} giocatori)`;
+        }
       }
     } catch {
-      if (reqMode === activeMode && reqPlayers === activePlayers) {
-        entries = buildFallbackTop100Entries(reqMode, reqPlayers);
+      if (
+        reqScope === activeScope &&
+        (reqScope === 'global' || reqPlayers === activePlayers)
+      ) {
+        entries = buildFallbackTop100Entries(reqScope, reqPlayers);
         statusLine.textContent = 'Classifica locale stagionale caricata.';
       }
     } finally {
@@ -128,10 +140,12 @@ export function createTop100View(): HTMLElement {
     }
   };
 
+  const scopeOptions = [TOP100_GLOBAL_OPTION, ...TOP100_MODES] as const;
+
   const renderControls = (focusTarget?: 'mode' | 'players'): void => {
     modeBar.replaceChildren();
-    TOP100_MODES.forEach((m, idx) => {
-      const isSelected = m.id === activeMode;
+    scopeOptions.forEach((m, idx) => {
+      const isSelected = m.id === activeScope;
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = `tournaments-filter-btn${isSelected ? ' active' : ''}`;
@@ -140,8 +154,8 @@ export function createTop100View(): HTMLElement {
       btn.setAttribute('aria-selected', String(isSelected));
       btn.tabIndex = isSelected ? 0 : -1;
       btn.addEventListener('click', () => {
-        if (activeMode === m.id) return;
-        activeMode = m.id;
+        if (activeScope === m.id) return;
+        activeScope = m.id;
         playEarcon('nav');
         announce(`Classifica ${m.label}`, 'polite');
         renderControls('mode');
@@ -152,10 +166,10 @@ export function createTop100View(): HTMLElement {
         if (ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return;
         ev.preventDefault();
         const delta = ev.key === 'ArrowRight' ? 1 : -1;
-        const { index, wrapped } = computeSafeLoopIndex(idx, delta, TOP100_MODES.length);
-        const next = TOP100_MODES[index];
+        const { index, wrapped } = computeSafeLoopIndex(idx, delta, scopeOptions.length);
+        const next = scopeOptions[index];
         if (next) {
-          activeMode = next.id;
+          activeScope = next.id;
           playEarcon(wrapped ? 'boundary' : 'nav');
           renderControls('mode');
           void loadLeaderboard();
@@ -165,6 +179,7 @@ export function createTop100View(): HTMLElement {
       if (focusTarget === 'mode' && isSelected) btn.focus();
     });
 
+    countGroup.hidden = activeScope === 'global';
     countBar.replaceChildren();
     TOP100_PLAYER_COUNTS.forEach((p, idx) => {
       const isSelected = p.count === activePlayers;

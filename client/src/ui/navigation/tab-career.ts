@@ -15,7 +15,6 @@ import {
   fetchChallenges,
   fetchInventory,
   fetchMatchReplay,
-  fetchTopLeaderboard,
 } from '../../net/tcp/rest-client.js';
 import {
   getEconomySnapshot,
@@ -23,10 +22,6 @@ import {
 } from '../../state/inventory-store.js';
 import { getProfile } from '../../state/profile-store.js';
 import { openModal } from '../components/modal.js';
-import {
-  renderChallengerList,
-  type ChallengerEntry,
-} from '../tournament/challenger-list.js';
 import { getShopItemArtworkSvg } from './shop-artworks.js';
 import {
   aggregateCareerStats,
@@ -89,25 +84,6 @@ export function createCareerView(): HTMLElement {
   historyCol.className = 'career-history-col';
 
   layout.append(profileCol, statsCol, historyCol);
-
-  const boardHead = document.createElement('div');
-  boardHead.className = 'tournament-section-head';
-  const boardHeading = document.createElement('h3');
-  boardHeading.textContent = 'Classifica Top 100 Globale';
-  const boardSub = document.createElement('span');
-  boardSub.textContent = `Soglia Supersonic Legend: ${SSL_MMR_THRESHOLD}+ MMR`;
-  boardHead.append(boardHeading, boardSub);
-
-  const boardContainer = document.createElement('div');
-  const fallbackBoard: ChallengerEntry[] = [
-    {
-      rank: 1,
-      username,
-      mmr,
-      rankTier: rankInfo.tier,
-    },
-  ];
-  boardContainer.appendChild(renderChallengerList(fallbackBoard));
 
   const openReplayViewer = (
     matchId: string,
@@ -252,7 +228,17 @@ export function createCareerView(): HTMLElement {
       window.location.hash = '#armadietto';
     });
 
-    profileCol.append(avatarFrame, identity, rankBox, lockerBtn);
+    const top100Btn = document.createElement('button');
+    top100Btn.type = 'button';
+    top100Btn.className = 'ultra-btn ultra-btn--ghost career-locker-btn';
+    top100Btn.textContent = 'Classifica Top 100 Globale →';
+    top100Btn.addEventListener('click', () => {
+      playEarcon('nav');
+      announce('Apertura Top 100 Globale', 'polite');
+      window.location.hash = '#top100';
+    });
+
+    profileCol.append(avatarFrame, identity, rankBox, lockerBtn, top100Btn);
   };
 
   const renderStats = (): void => {
@@ -463,15 +449,6 @@ export function createCareerView(): HTMLElement {
     })
     .catch(() => {});
 
-  void fetchTopLeaderboard(100)
-    .then((res) => {
-      if (res.entries.length > 0) {
-        boardContainer.innerHTML = '';
-        boardContainer.appendChild(renderChallengerList(res.entries));
-      }
-    })
-    .catch(() => {});
-
-  root.append(layout, boardHead, boardContainer);
+  root.append(layout);
   return root;
 }

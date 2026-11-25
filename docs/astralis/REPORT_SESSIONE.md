@@ -4,6 +4,17 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
+## Sessione 2026-11-25 (Parte 4) — Spostamento Classifica Top 100 Globale da Carriera a Top 100
+
+- **Obiettivo**: rimuovere la sezione duplicata `Classifica Top 100 Globale` dal tab `Carriera` e spostarla nel tab dedicato **Top 100 Mondiale**, mantenendo tutte le `8` modalità e i formati `1v1`, `3 Giocatori` e `4 Giocatori`.
+- **Stato Lavori**:
+  - `[x]` Rimossa la tabella `Classifica Top 100 Globale` e le relative chiamate dal tab `Carriera` in `client/src/ui/navigation/tab-career.ts`, aggiungendo il pulsante di collegamento diretto `Classifica Top 100 Globale →` verso `#top100`.
+  - `[x]` Esteso l'endpoint `GET /api/leaderboard/top` e `getTopLeaderboard` (`server/src/persistence/redis/leaderboard.ts`, `server/src/net/tcp/rest-routes/challenges.ts`) con lo scope `'global'` (tutte le modalità) oltre alle `8` modalità specifiche con `1v1` / `3p` / `4p`.
+  - `[x]` Aggiornati `client/src/ui/navigation/top100-helpers.ts`, `client/src/ui/navigation/tab-top100.ts` e `client/tests/top100-and-legacy.test.ts` per ospitare `🌍 Globale` come vista iniziale del tab **Top 100** accanto alle `8` modalità e ai rispettivi selettori giocatore.
+  - `[x]` Verificato con `npm run ci` (`0` errori ESLint/TS, build Vite `178` moduli `index-BcZIXWLT.js` / `index-DbWmTqKd.css`, **27 suite Vitest / 165 test passati**: shared `74`, server `40`, client `51`) e SHA-256 `contenuto-game.md` invariato (`83CAE3C057B35C22B460CC6F61BCF11AA355D1DB5F9EB4F2EC40517B2A1BD4D9`).
+
+---
+
 ## Sessione 2026-11-25 (Parte 3) — 15 Categorie Targhette (364 Titoli), Bot Realistici in Mini-Giochi/UNO/Top 100 & Prestigio Scalare
 
 - **Obiettivo**: includere tutte le `15` categorie richieste di Targhette (`UNO`, `Scala 40`, `Ruba Mazzetto`, `Black Jack`, `Titoli Rank`, `Scopa — Zero Residuo`, `Burraco — Sincronia Perfetta`, `Poker Texas — Oltre il Bluff`, `Millemiglia — Velocità Terminale`, `Titoli Extra`, `Club`, `Multi-Modalità`, `UCS — Ultra Champions Series`, `Stagione 1 — Trofei Legacy`, `Stagione 2 — Trofei Legacy`) complete di missioni di sblocco e stati legacy, usare i `120` bot realistici (`🗡️ DreadForce`, `🤖 PikeKard`, `🎭 GhostEdge`, `🌪 PeakMode`, ...) in UNO, tutti e 7 i mini-giochi e Top 100 Mondiale, e scalare automaticamente il prestigio della targhetta in base al rango/MMR.

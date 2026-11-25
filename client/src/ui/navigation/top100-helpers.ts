@@ -10,11 +10,23 @@ import {
 } from '@uno/shared';
 import type { TopLeaderboardEntry } from '../../net/tcp/rest-client.js';
 
+export type Top100Scope = 'global' | GameMode;
+
 export interface Top100ModeOption {
   readonly id: GameMode;
   readonly label: string;
   readonly tag: string;
 }
+
+export const TOP100_GLOBAL_OPTION: {
+  readonly id: 'global';
+  readonly label: string;
+  readonly tag: string;
+} = {
+  id: 'global',
+  label: '🌍 Globale',
+  tag: 'ALL',
+};
 
 export interface Top100PlayerCountOption {
   readonly count: 2 | 3 | 4;
@@ -53,10 +65,11 @@ function hashBucket(text: string): number {
  * using realistic contenders and prestige-scaled titles.
  */
 export function buildFallbackTop100Entries(
-  mode: GameMode,
-  playerCount: 2 | 3 | 4,
+  mode: Top100Scope,
+  playerCount: 2 | 3 | 4 = 4,
 ): TopLeaderboardEntry[] {
-  const seed = hashBucket(`${mode}:${playerCount}`);
+  const bucketKey = mode === 'global' ? 'global:all' : `${mode}:${playerCount}`;
+  const seed = hashBucket(bucketKey);
   const out: TopLeaderboardEntry[] = [];
   const totalBots = REALISTIC_BOT_PROFILES.length;
 
@@ -64,7 +77,11 @@ export function buildFallbackTop100Entries(
     const bot = REALISTIC_BOT_PROFILES[(i + (seed % 17)) % totalBots]!;
     const curveMmr = Math.round(bot.baseMmr - i * 5 + ((seed + i * 13) % 19) - 9);
     const mmr = Math.max(450, Math.min(2250, curveMmr));
-    const title = pickPrestigiousTitleForMMR(mmr, mode, i + seed);
+    const title = pickPrestigiousTitleForMMR(
+      mmr,
+      mode === 'global' ? undefined : mode,
+      i + seed,
+    );
     out.push({
       rank: 0,
       playerId: `fallback_${mode}_${playerCount}_${i + 1}`,

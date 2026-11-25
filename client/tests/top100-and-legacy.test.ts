@@ -79,8 +79,13 @@ describe('15-Category Targhette, Realistic Bots, Sfide & Top 100 Mondiale', () =
       '4 Giocatori',
     ]);
 
+    const globalBoard = buildFallbackTop100Entries('global', 4);
     const uno1v1 = buildFallbackTop100Entries('uno', 2);
     const poker4p = buildFallbackTop100Entries('poker-texas', 4);
+    expect(globalBoard).toHaveLength(100);
+    expect(globalBoard[0]?.rank).toBe(1);
+    expect(globalBoard[99]?.rank).toBe(100);
+    expect(globalBoard[0]!.mmr).toBeGreaterThanOrEqual(globalBoard[99]!.mmr);
     expect(uno1v1).toHaveLength(100);
     expect(poker4p).toHaveLength(100);
     expect(uno1v1[0]?.rank).toBe(1);

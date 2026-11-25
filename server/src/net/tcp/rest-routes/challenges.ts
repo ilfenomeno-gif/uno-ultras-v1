@@ -17,6 +17,7 @@ import {
 } from '../../../persistence/postgres/repositories/matches.js';
 import {
   getTopLeaderboard,
+  type LeaderboardMode,
   type LeaderboardPlayerCount,
 } from '../../../persistence/redis/leaderboard.js';
 import { listBotSocialProfilesNearMMR } from '../../../persistence/postgres/repositories/bot-social.js';
@@ -55,10 +56,20 @@ export const leaderboardRouter = Router();
 
 leaderboardRouter.get('/top', async (req, res) => {
   const limit = Number(req.query['limit'] ?? 100);
-  const rawMode = String(req.query['mode'] ?? 'uno');
-  const mode: GameMode = (GAME_MODES as readonly string[]).includes(rawMode)
-    ? (rawMode as GameMode)
-    : 'uno';
+  const rawMode = String(req.query['mode'] ?? 'global');
+  const mode: LeaderboardMode =
+    rawMode === 'global'
+      ? 'global'
+      : (GAME_MODES as readonly string[]).includes(rawMode)
+        ? (rawMode as GameMode)
+        : 'global';
+  if (mode === 'global') {
+    const entries = await getTopLeaderboard(Number.isFinite(limit) ? limit : 100, {
+      mode: 'global',
+    });
+    res.status(200).json({ mode: 'global', playerCount: null, entries });
+    return;
+  }
   const rawPlayers = Number(req.query['players'] ?? 4);
   const playerCount: LeaderboardPlayerCount =
     rawPlayers === 2 || rawPlayers === 3 || rawPlayers === 4 ? rawPlayers : 4;
