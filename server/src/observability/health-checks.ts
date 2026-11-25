@@ -16,7 +16,6 @@ export interface SystemHealthReport {
   };
   flags: {
     geminiBots: boolean;
-    udpTelemetry: boolean;
     tournaments: boolean;
   };
   metrics: ReturnType<typeof metrics.snapshot>;
@@ -33,7 +32,6 @@ export async function buildHealthReport(): Promise<SystemHealthReport> {
     },
     flags: {
       geminiBots: featureFlags.ENABLE_GEMINI_BOTS,
-      udpTelemetry: featureFlags.ENABLE_UDP_TELEMETRY,
       tournaments: featureFlags.ENABLE_TOURNAMENTS,
     },
     metrics: metrics.snapshot(),

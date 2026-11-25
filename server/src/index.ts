@@ -11,7 +11,6 @@ import { UnoRoom } from './rooms/uno/uno-room.js';
 import { BlackjackRoom, GenericMiniGameRoom } from './rooms/mini-games/blackjack-room.js';
 import { Scala40Room } from './rooms/mini-games/scala40-room.js';
 import { ScopaRoom } from './rooms/mini-games/scopa-room.js';
-import { telemetryUdpServer } from './net/udp/telemetry-udp.js';
 import { recoverOrphanedMatchmakingTickets } from './net/tcp/rest-routes/matchmaking.js';
 import { seedBotSocialProfiles } from './persistence/postgres/repositories/bot-social.js';
 import { connectRedis, closeRedis } from './persistence/redis/client.js';
@@ -68,15 +67,6 @@ async function bootstrap(): Promise<void> {
   } catch {
     // non-fatal se Postgres offline
   }
-  if (process.env['ENABLE_UDP_TELEMETRY'] === 'true') {
-    try {
-      await telemetryUdpServer.start();
-    } catch {
-      // non-fatal se porta UDP occupata in test
-    }
-  } else {
-    logger.info('UDP Telemetry disabled (set ENABLE_UDP_TELEMETRY=true to enable)');
-  }
 
   await gameServer.listen(env.WS_PORT);
   logger.info(
@@ -88,7 +78,6 @@ async function bootstrap(): Promise<void> {
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, 'Shutting down UNO ULTRA Server...');
     await gameServer.gracefullyShutdown(false);
-    await telemetryUdpServer.stop();
     await Promise.allSettled([closeRedis(), closePostgres()]);
     process.exit(0);
   };

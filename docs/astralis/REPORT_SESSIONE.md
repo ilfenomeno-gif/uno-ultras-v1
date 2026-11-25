@@ -4,6 +4,14 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
+## Sessione 2026-11-25 (Parte 16) — Rimozione Definitiva Canale UDP Grezzo (`:41234/udp`)
+
+- **Obiettivo**: rimuovere completamente il canale di telemetria UDP grezzo (`:41234/udp`, `telemetry-udp.ts`) poiché il client è esclusivamente browser (HTTP/REST + Colyseus WebSocket + CoTURN WebRTC), mantenendo per ora `UNO ULTRA` come branding del prototipo interno.
+- **Stato Lavori**:
+  - `[x]` Eliminato `server/src/net/udp/telemetry-udp.ts` e rimossi tutti i collegamenti in `server/src/net/index.ts`, `server/src/index.ts`, `server/src/config/feature-flags.ts`, `server/src/observability/health-checks.ts`, `server/tests/integration/economy-and-gemini.test.ts`, `.env.example` e `README.md`.
+
+---
+
 ## Sessione 2026-11-25 (Parte 15) — Fail-Closed Produzione DB/Migrazioni, `trust proxy` + Limiter Separati & Recovery Ticket al Riavvio
 
 - **Obiettivo**: chiudere il rischio di fallback silenzioso in produzione, rendere indipendenti i rate-limiter dietro proxy e recuperare eventuali ticket `searching` rimasti orfani da un riavvio server.

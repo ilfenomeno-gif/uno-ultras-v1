@@ -9,7 +9,7 @@ Tutte le rotte protette richiedono header `Authorization: Bearer <JWT>` ottenuto
 | Metodo | Endpoint | Auth | Descrizione |
 |---|---|---|---|
 | `GET` | `/api/health` | No | Stato server e dipendenze (`postgres`, `redis`: `up`/`down`). |
-| `GET` | `/api/health/metrics` | No | Metriche runtime in memoria (inclusi contatori UDP/room). |
+| `GET` | `/api/health/metrics` | No | Metriche runtime in memoria (inclusi contatori room/HTTP). |
 
 ## Autenticazione (`/api/auth`)
 

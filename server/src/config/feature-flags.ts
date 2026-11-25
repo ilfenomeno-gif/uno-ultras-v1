@@ -12,7 +12,6 @@ export interface FeatureFlags {
   readonly GEMINI_API_KEY: string;
   readonly GEMINI_MODEL: string;
   readonly GEMINI_TIMEOUT_MS: number;
-  readonly ENABLE_UDP_TELEMETRY: boolean;
   readonly ENABLE_VOICE_RELAY: boolean;
   readonly ENABLE_TOURNAMENTS: boolean;
   readonly ENABLE_CUSTOM_RULES: boolean;
@@ -24,7 +23,6 @@ export function getFeatureFlags(envSource: NodeJS.ProcessEnv = process.env): Fea
     GEMINI_API_KEY: envSource['GEMINI_API_KEY'] ?? '',
     GEMINI_MODEL: envSource['GEMINI_MODEL'] ?? 'gemini-2.5-flash',
     GEMINI_TIMEOUT_MS: Number(envSource['GEMINI_TIMEOUT_MS'] ?? 1500),
-    ENABLE_UDP_TELEMETRY: parseBoolFlag(envSource['ENABLE_UDP_TELEMETRY'], true),
     ENABLE_VOICE_RELAY: parseBoolFlag(envSource['ENABLE_VOICE_RELAY'], true),
     ENABLE_TOURNAMENTS: parseBoolFlag(envSource['ENABLE_TOURNAMENTS'], true),
     ENABLE_CUSTOM_RULES: parseBoolFlag(envSource['ENABLE_CUSTOM_RULES'], true),

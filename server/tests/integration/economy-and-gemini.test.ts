@@ -2,15 +2,12 @@
 // UNO ULTRA Server — Integration tests: Gemini, Matchmaking, TURN/UDP & REST
 // ============================================================
 
-import dgram from 'node:dgram';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createInitialState,
-  encodeBinary,
   startMatch,
-  UDP_CHANNELS,
   type EngineState,
 } from '@uno/shared';
 import { adviseBotMove, buildPublicBotObservation } from '../../src/ai/gemini-bot-advisor.js';
@@ -19,7 +16,6 @@ import { buildTwoWingBracket } from '../../src/persistence/postgres/repositories
 import { generateTurnCredentials } from '../../src/net/turn/coturn-client.js';
 import { buildIceConfigurationForPlayer } from '../../src/net/turn/ice-config.js';
 import { webrtcSignaling } from '../../src/net/udp/webrtc-signaling.js';
-import { UdpTelemetryServer } from '../../src/net/udp/telemetry-udp.js';
 import { createHttpApp } from '../../src/net/tcp/http-server.js';
 import { signAccessToken } from '../../src/auth/jwt-service.js';
 import { RoomActionThrottle } from '../../src/security/anti-cheat.js';
@@ -149,35 +145,6 @@ describe('Matchmaking, Brackets, CoTURN/WebRTC & UDP Telemetry', () => {
     });
     expect(webrtcSignaling.drainSignals('r1', 'p2')).toHaveLength(1);
     expect(webrtcSignaling.drainSignals('r1', 'p2')).toHaveLength(0);
-
-    const udp = new UdpTelemetryServer();
-    const port = await udp.start(0);
-    const sender = dgram.createSocket('udp4');
-    try {
-      const pkt = encodeBinary(UDP_CHANNELS.TELEMETRY, {
-        matchId: 'm1',
-        playerId: 'u-telemetry',
-        rttMs: 18,
-        packetLoss: 0,
-        jitterMs: 2,
-      });
-      await new Promise<void>((resolve, reject) => {
-        sender.send(pkt, port, '127.0.0.1', (err) => (err ? reject(err) : resolve()));
-      });
-      await new Promise((r) => setTimeout(r, 40));
-      expect(udp.getLatestForPlayer('u-telemetry')?.rttMs).toBe(18);
-
-      // Oversized UDP packet (> 512 bytes) must be dropped without touching latestStats
-      const oversized = Buffer.alloc(600, 0x41);
-      await new Promise<void>((resolve, reject) => {
-        sender.send(oversized, port, '127.0.0.1', (err) => (err ? reject(err) : resolve()));
-      });
-      await new Promise((r) => setTimeout(r, 30));
-      expect(udp.getLatestForPlayer('u-telemetry')?.rttMs).toBe(18);
-    } finally {
-      sender.close();
-      await udp.stop();
-    }
   });
 });
 

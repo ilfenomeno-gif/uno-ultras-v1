@@ -10,7 +10,7 @@ Monorepo TypeScript per **UNO ULTRA**, piattaforma card game competitiva con ser
 
 Il browser **non** usa socket UDP grezzi per il gameplay:
 - **Gameplay, Auth & Economia (HTTP REST + Colyseus WebSocket):** Tutte le azioni di partita (`play_card`, `draw_card`, `call_uno`, `challenge_wild4`), autenticazione JWT, coda matchmaking, economia Postgres ACID, social/presenza e tornei viaggiano su **Express (`/api/*`) + Colyseus WebSocket (`/ws`, `/matchmake/`)**. Le mani private non entrano mai nello stato pubblico Colyseus (`cardCount` pubblico, mani inviate via `client.send('hand', ...)`).
-- **Telemetria UDP & WebRTC Opzionale:** Il listener UDP (`ENABLE_UDP_TELEMETRY=true`, disabilitato di default e protetto con limite pacchetto 512 B e rate-limit per IP) è riservato esclusivamente a eventuali probe/client nativi esterni, mentre `:3478` / `:5349` servono il relay CoTURN WebRTC (protetto in produzione da credenziali effimere HMAC e blocco SSRF verso reti private).
+- **WebRTC Opzionale (CoTURN):** Le porte `:3478` / `:5349` servono esclusivamente il relay CoTURN WebRTC (protetto in produzione da credenziali effimere HMAC e blocco SSRF verso reti private). Il canale grezzo di telemetria UDP (`:41234/udp`) è stato rimosso perché il client è esclusivamente browser.
 - **CI Automatica:** [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) esegue automaticamente `npm ci`, lint (`ESLint 9`), `typecheck`, `build` e tutti i test su push/PR verso `main` usando `.nvmrc` (`24`).
 
 ---
