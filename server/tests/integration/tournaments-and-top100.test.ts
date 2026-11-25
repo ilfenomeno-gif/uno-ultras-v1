@@ -3,12 +3,63 @@ import type http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { signAccessToken } from '../../src/auth/jwt-service.js';
 import { createHttpApp } from '../../src/net/tcp/http-server.js';
+import { query } from '../../src/persistence/postgres/client.js';
+import { updateDevState } from '../../src/persistence/postgres/dev-store.js';
 import { upsertPlayerPlaylistRank } from '../../src/persistence/postgres/repositories/playlist-ranks.js';
+import { getRedisClient } from '../../src/persistence/redis/client.js';
 import { getTopLeaderboard, updateLeaderboardScore } from '../../src/persistence/redis/leaderboard.js';
 import {
   formatBotLadderBucketKey,
   tickBotLadderSimulation,
 } from '../../src/services/bot-ladder.js';
+
+async function cleanupRival50Entries(testerId?: string): Promise<void> {
+  await query(
+    "DELETE FROM player_playlist_ranks WHERE player_id IN (SELECT id FROM players WHERE username LIKE 'Rival50_%')",
+  ).catch(() => undefined);
+  await query("UPDATE players SET deleted_at = NOW() WHERE username LIKE 'Rival50_%'").catch(
+    () => undefined,
+  );
+  if (testerId) {
+    await query('DELETE FROM player_playlist_ranks WHERE player_id = $1', [testerId]).catch(
+      () => undefined,
+    );
+    await query('UPDATE players SET deleted_at = NOW() WHERE id = $1', [testerId]).catch(
+      () => undefined,
+    );
+  }
+  try {
+    const redis = getRedisClient();
+    if (redis.isOpen) {
+      for (const key of ['leaderboard:mmr', 'leaderboard:mmr:scala40:2p']) {
+        const members = await redis.zRange(key, 0, -1);
+        const stale = members.filter((m) => {
+          const [id = '', name = ''] = m.split('|');
+          return name.startsWith('Rival50_') || (testerId !== undefined && id === testerId);
+        });
+        if (stale.length > 0) {
+          await redis.zRem(key, stale);
+        }
+      }
+    }
+  } catch {
+    // Redis offline in unit-only runs
+  }
+  updateDevState((state) => {
+    for (const bucketKey of ['global', 'scala40:2p']) {
+      const bucket = state.leaderboards[bucketKey];
+      if (!bucket) continue;
+      for (const [id, entry] of Object.entries(bucket)) {
+        if (entry.username.startsWith('Rival50_') || id === testerId) {
+          delete bucket[id];
+        }
+      }
+    }
+    if (testerId && state.playlistRanks[testerId]) {
+      delete state.playlistRanks[testerId];
+    }
+  });
+}
 
 let server: http.Server;
 let baseUrl = '';
@@ -102,6 +153,8 @@ describe('Tournaments Zero-500 Enroll & Top 100 Mondiale API', () => {
     expect(lowBody.window).toBeNull();
     expect(lowBody.rivals[0]!.rank).toBeGreaterThan(100);
 
+    await cleanupRival50Entries();
+
     // 2) Register real player and place around rank #50 inside Top 100 on scala40:2p
     const regRes = await fetch(`${baseUrl}/api/auth/register`, {
       method: 'POST',
@@ -122,82 +175,86 @@ describe('Tournaments Zero-500 Enroll & Top 100 Mondiale API', () => {
       username: string;
     };
 
-    const topInit = await fetch(`${baseUrl}/api/leaderboard/top?mode=scala40&players=2&limit=100`);
-    const topJson = (await topInit.json()) as {
-      entries: Array<{ rank: number; playerId: string; username: string; mmr: number }>;
-    };
-    expect(topJson.entries).toHaveLength(100);
-    const target50 = topJson.entries[49]!;
-    const playerMmr = target50.mmr - 1;
-    await upsertPlayerPlaylistRank({
-      playerId: testerId,
-      mode: 'scala40',
-      playerCount: 2,
-      mmr: playerMmr,
-      rankTier: 'Diamond III',
-      wins: 20,
-      losses: 10,
-    });
-    await updateLeaderboardScore(testerId, testerName, playerMmr, {
-      mode: 'scala40',
-      playerCount: 2,
-      globalMmr: playerMmr,
-    });
-
-    const rivalsRes = await fetch(
-      `${baseUrl}/api/leaderboard/rivals?mode=scala40&players=2&count=3`,
-      { headers: { Authorization: `Bearer ${rivalToken}` } },
-    );
-    expect(rivalsRes.status).toBe(200);
-    const rivalsBody = (await rivalsRes.json()) as {
-      inTop100: boolean;
-      playerRank: number;
-      window: { min: number; max: number } | null;
-      rivals: Array<{ botId: string; rank: number; username: string; mmr: number }>;
-    };
-    expect(rivalsBody.inTop100).toBe(true);
-    expect(rivalsBody.window).toBeTruthy();
-    for (const r of rivalsBody.rivals) {
-      expect(r.rank).toBeGreaterThanOrEqual(rivalsBody.window!.min);
-      expect(r.rank).toBeLessThanOrEqual(rivalsBody.window!.max);
-      expect(Math.abs(r.rank - rivalsBody.playerRank)).toBeLessThanOrEqual(5);
-    }
-
-    // Beat a rival directly above the player and verify overtakes in Top 100
-    const aboveRival =
-      rivalsBody.rivals.find((r) => r.rank < rivalsBody.playerRank) ?? rivalsBody.rivals[0]!;
-    const settleRes = await fetch(`${baseUrl}/api/progression/settle-match`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${rivalToken}`,
-      },
-      body: JSON.stringify({
-        matchId: `overtake_${Date.now()}`,
+    try {
+      const topInit = await fetch(`${baseUrl}/api/leaderboard/top?mode=scala40&players=2&limit=100`);
+      const topJson = (await topInit.json()) as {
+        entries: Array<{ rank: number; playerId: string; username: string; mmr: number }>;
+      };
+      expect(topJson.entries).toHaveLength(100);
+      const target50 = topJson.entries[49]!;
+      const playerMmr = target50.mmr - 1;
+      await upsertPlayerPlaylistRank({
+        playerId: testerId,
         mode: 'scala40',
         playerCount: 2,
-        isRanked: true,
-        won: true,
-        score: 150,
-        opponentScore: 40,
-        turnCount: 8,
-        durationSec: 30,
-        cardsPlayed: 6,
-        botIds: [aboveRival.botId],
-        botNames: [aboveRival.username],
-      }),
-    });
-    expect(settleRes.status).toBe(200);
+        mmr: playerMmr,
+        rankTier: 'Diamond III',
+        wins: 20,
+        losses: 10,
+      });
+      await updateLeaderboardScore(testerId, testerName, playerMmr, {
+        mode: 'scala40',
+        playerCount: 2,
+        globalMmr: playerMmr,
+      });
 
-    const topAfterRes = await fetch(`${baseUrl}/api/leaderboard/top?mode=scala40&players=2&limit=100`);
-    const topAfter = (await topAfterRes.json()) as {
-      entries: Array<{ rank: number; playerId: string; username: string; mmr: number }>;
-    };
-    const meAfter = topAfter.entries.find((e) => e.playerId === testerId);
-    const rivalAfter = topAfter.entries.find((e) => e.playerId === aboveRival.botId);
-    expect(meAfter).toBeDefined();
-    expect(rivalAfter).toBeDefined();
-    expect(rivalAfter!.mmr).toBeLessThan(aboveRival.mmr);
-    expect(meAfter!.rank).toBeLessThan(rivalAfter!.rank);
+      const rivalsRes = await fetch(
+        `${baseUrl}/api/leaderboard/rivals?mode=scala40&players=2&count=3`,
+        { headers: { Authorization: `Bearer ${rivalToken}` } },
+      );
+      expect(rivalsRes.status).toBe(200);
+      const rivalsBody = (await rivalsRes.json()) as {
+        inTop100: boolean;
+        playerRank: number;
+        window: { min: number; max: number } | null;
+        rivals: Array<{ botId: string; rank: number; username: string; mmr: number }>;
+      };
+      expect(rivalsBody.inTop100).toBe(true);
+      expect(rivalsBody.window).toBeTruthy();
+      for (const r of rivalsBody.rivals) {
+        expect(r.rank).toBeGreaterThanOrEqual(rivalsBody.window!.min);
+        expect(r.rank).toBeLessThanOrEqual(rivalsBody.window!.max);
+        expect(Math.abs(r.rank - rivalsBody.playerRank)).toBeLessThanOrEqual(5);
+      }
+
+      // Beat a rival directly above the player and verify overtakes in Top 100
+      const aboveRival =
+        rivalsBody.rivals.find((r) => r.rank < rivalsBody.playerRank) ?? rivalsBody.rivals[0]!;
+      const settleRes = await fetch(`${baseUrl}/api/progression/settle-match`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${rivalToken}`,
+        },
+        body: JSON.stringify({
+          matchId: `overtake_${Date.now()}`,
+          mode: 'scala40',
+          playerCount: 2,
+          isRanked: true,
+          won: true,
+          score: 150,
+          opponentScore: 40,
+          turnCount: 8,
+          durationSec: 30,
+          cardsPlayed: 6,
+          botIds: [aboveRival.botId],
+          botNames: [aboveRival.username],
+        }),
+      });
+      expect(settleRes.status).toBe(200);
+
+      const topAfterRes = await fetch(`${baseUrl}/api/leaderboard/top?mode=scala40&players=2&limit=100`);
+      const topAfter = (await topAfterRes.json()) as {
+        entries: Array<{ rank: number; playerId: string; username: string; mmr: number }>;
+      };
+      const meAfter = topAfter.entries.find((e) => e.playerId === testerId);
+      const rivalAfter = topAfter.entries.find((e) => e.playerId === aboveRival.botId);
+      expect(meAfter).toBeDefined();
+      expect(rivalAfter).toBeDefined();
+      expect(rivalAfter!.mmr).toBeLessThan(aboveRival.mmr);
+      expect(meAfter!.rank).toBeLessThan(rivalAfter!.rank);
+    } finally {
+      await cleanupRival50Entries(testerId);
+    }
   });
 });

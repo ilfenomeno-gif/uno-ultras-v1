@@ -4,6 +4,16 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
+## Sessione 2026-11-25 (Parte 17) — Audit Dipendenze, Dependabot, CodeQL & E2E Abbandono Ranked
+
+- **Obiettivo**: chiudere l'igiene di sicurezza (verifica `npm audit fix` non-breaking, Dependabot, analisi statica CodeQL) e coprire via Playwright E2E il percorso di abbandono a partita in corso (sostituzione immediata con bot + ban competitivo `403`).
+- **Stato Lavori**:
+  - `[x]` Verifica `npm audit fix` (senza `--force`): 0 pacchetti modificabili senza major upgrade. Restano esplicitamente documentati **16 advisory in produzione** (`--omit=dev`: `2 low`, `10 moderate`, `3 high`, `1 critical`) / **26 totali** (`2 low`, `16 moderate`, `4 high`, `4 critical`), tutti legati a major breaking non applicabili automaticamente: `bcrypt@5.1.1 -> @mapbox/node-pre-gyp@1.0.11 -> tar@6.2.1`, `colyseus@0.16.5 -> @colyseus/auth@0.16.6` (`elliptic`, `jwk-to-pem`, `grant`, `request-oauth`, `uuid`) e `@colyseus/core -> nanoid` (`colyseus@0.18`), `zod@3` (`zod@4.6.7`) e devDependencies `vitest@4` (`vitest@5.1.2`, `tinypool`, `esbuild`, `glob`, `minimatch`).
+  - `[x]` Aggiunti `.github/dependabot.yml` (aggiornamenti settimanali `npm` raggruppati minor/patch e `github-actions`) e `.github/workflows/codeql.yml` (`javascript-typescript` su `push`/`pull_request` `main` + schedule settimanale).
+  - `[x]` Aggiunto secondo test Playwright in `e2e/matchmaking-e2e.spec.ts`: uscita volontaria mid-match (`ESCI`) in coda ranked Blitz 1v1, comparsa immediata del tag `BOT` lato avversario, rifiuto HTTP `403` (`Ban dal matchmaking attivo`) su `POST /api/matchmaking/enqueue` per chi abbandona, e completamento/liquidazione partita contro il bot sostitutivo (`ended-overlay` + `mcp-rewards`).
+
+---
+
 ## Sessione 2026-11-25 (Parte 16) — Rimozione Definitiva Canale UDP Grezzo (`:41234/udp`)
 
 - **Obiettivo**: rimuovere completamente il canale di telemetria UDP grezzo (`:41234/udp`, `telemetry-udp.ts`) poiché il client è esclusivamente browser (HTTP/REST + Colyseus WebSocket + CoTURN WebRTC), mantenendo per ora `UNO ULTRA` come branding del prototipo interno.

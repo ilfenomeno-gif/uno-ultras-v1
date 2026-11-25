@@ -189,3 +189,147 @@ test('two browser contexts matchmake into the same UNO room, reject uninvited We
     await contextIntruder.close();
   }
 });
+
+test('mid-match ranked exit replaces leaver with bot, lets opponent settle, and bans leaver from re-enqueue', async ({
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  const suffix = `${Date.now().toString(36)}_${Math.floor(Math.random() * 1000)}`;
+  const usernameStay = `E2ES_${suffix}`;
+  const usernameLeave = `E2EL_${suffix}`;
+
+  const contextStay = await browser.newContext();
+  const contextLeave = await browser.newContext();
+
+  try {
+    const pageStay = await contextStay.newPage();
+    const pageLeave = await contextLeave.newPage();
+
+    await Promise.all([
+      registerAndEnterLobby(pageStay, usernameStay),
+      registerAndEnterLobby(pageLeave, usernameLeave),
+    ]);
+
+    for (const page of [pageStay, pageLeave]) {
+      const variantSelect = page.locator('select', {
+        has: page.locator('option[value="blitz"]'),
+      });
+      await variantSelect.selectOption('blitz');
+    }
+
+    await Promise.all([
+      pageStay.locator('.launcher-play-btn').click(),
+      (async () => {
+        await pageLeave.waitForTimeout(250);
+        await pageLeave.locator('.launcher-play-btn').click();
+      })(),
+    ]);
+
+    const roomBadgeStay = pageStay.locator('[data-role="room-id"]');
+    const roomBadgeLeave = pageLeave.locator('[data-role="room-id"]');
+    await expect(roomBadgeStay).toHaveText(/^Room .+/, { timeout: 20_000 });
+    await expect(roomBadgeLeave).toHaveText(/^Room .+/, { timeout: 20_000 });
+
+    const roomIdStay = (await roomBadgeStay.textContent())?.trim();
+    const roomIdLeave = (await roomBadgeLeave.textContent())?.trim();
+    expect(roomIdStay).toBeTruthy();
+    expect(roomIdStay).toBe(roomIdLeave);
+
+    // Conferma ingresso reale di entrambi gli umani prima dell'abbandono
+    await expect(pageStay.locator('[data-role="opponents"]')).toContainText(usernameLeave);
+
+    // Leave volontario (consented = true): sostituisce subito con bot STRAT ed emette ban ranked
+    await pageLeave.locator('.game-view__exit').click();
+    await expect(pageLeave.locator('button.launcher-play-btn:not([data-action])')).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Il giocatore rimasto vede comparire il tag BOT sull'avversario sostituito
+    await expect(pageStay.locator('[data-role="opponents"] .opponent__tag')).toHaveText('BOT', {
+      timeout: 15_000,
+    });
+
+    // Attesa minima per completamento persistenza asincrona ban in onLeave, poi verifica HTTP 403 su /enqueue
+    await pageLeave.waitForTimeout(400);
+    const reEnqueueResult = await pageLeave.evaluate(async () => {
+      const { getToken } = await import('/src/state/profile-store.ts');
+      const token = getToken() ?? '';
+      const res = await fetch('/api/matchmaking/enqueue', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          mode: 'uno',
+          targetPlayers: 2,
+          variant: 'blitz',
+          ranked: true,
+        }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      return { status: res.status, error: body.error ?? '' };
+    });
+    expect(reEnqueueResult.status).toBe(403);
+    expect(reEnqueueResult.error).toMatch(/Ban dal matchmaking attivo/i);
+
+    // Il giocatore rimasto conclude la partita contro il bot sostitutivo fino a liquidazione
+    const loopDeadline = Date.now() + 75_000;
+    while (Date.now() < loopDeadline) {
+      if ((await pageStay.locator('[data-role="ended-overlay"]:not([hidden])').count()) > 0) {
+        break;
+      }
+
+      const callUnoBtn = pageStay.locator('button[data-action="call-uno"][aria-disabled="false"]');
+      if ((await callUnoBtn.count()) > 0) {
+        await callUnoBtn.click().catch(() => undefined);
+        await pageStay.waitForTimeout(220);
+        continue;
+      }
+
+      const wildBtns = pageStay.locator('[data-role="wild-overlay"]:not([hidden]) .wild-color-btn');
+      if ((await wildBtns.count()) > 0) {
+        await wildBtns.first().click({ force: true }).catch(() => undefined);
+        await pageStay.waitForTimeout(250);
+        continue;
+      }
+
+      const isTurn = (await pageStay.locator('[data-role="status"].is-my-turn').count()) > 0;
+      if (!isTurn) {
+        await pageStay.waitForTimeout(120);
+        continue;
+      }
+
+      const playableCard = pageStay.locator('.uno-card[aria-disabled="false"]').first();
+      if ((await playableCard.count()) > 0) {
+        await playableCard.click().catch(() => undefined);
+        await pageStay.waitForTimeout(100);
+        const postWild = pageStay.locator(
+          '[data-role="wild-overlay"]:not([hidden]) .wild-color-btn',
+        );
+        if ((await postWild.count()) > 0) {
+          await postWild.first().click({ force: true }).catch(() => undefined);
+        }
+        await pageStay.waitForTimeout(220);
+        continue;
+      }
+
+      const drawBtn = pageStay.locator('button[data-action="draw"][aria-disabled="false"]');
+      if ((await drawBtn.count()) > 0) {
+        await drawBtn.click().catch(() => undefined);
+        await pageStay.waitForTimeout(250);
+      } else {
+        await pageStay.waitForTimeout(100);
+      }
+    }
+
+    await expect(pageStay.locator('[data-role="ended-overlay"]:not([hidden])')).toBeVisible();
+    await expect(pageStay.locator('[data-role="ended-winner"]')).not.toHaveText('');
+    await expect(pageStay.locator('[data-role="mcp-rewards"]:not([hidden])')).toBeVisible();
+    await expect(pageStay.locator('[data-role="mcp-rewards"]')).toContainText('MMR');
+    await expect(pageStay.locator('[data-role="mcp-rewards"]')).toContainText('V-Card');
+  } finally {
+    await contextStay.close();
+    await contextLeave.close();
+  }
+});
