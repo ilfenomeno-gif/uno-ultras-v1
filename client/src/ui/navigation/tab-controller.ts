@@ -11,6 +11,7 @@ import { createLockerView } from './tab-locker.js';
 import { createBattleCardView } from './tab-battle-card.js';
 import { createChallengesView } from './tab-challenges.js';
 import { createTournamentsView } from './tab-tournaments.js';
+import { createTop100View } from './tab-top100.js';
 import { createCareerView } from './tab-career.js';
 import { createVCardView } from './tab-vcard.js';
 
@@ -60,6 +61,8 @@ export function renderRouteTabView(
         return createChallengesView();
       case 'tornei':
         return createTournamentsView();
+      case 'top100':
+        return createTop100View();
       case 'carriera':
         return createCareerView();
       case 'vcard':

@@ -2,6 +2,12 @@
 // UNO ULTRA — Economy, Battle Card, Challenges & Tournaments contracts
 // ============================================================
 
+import {
+  LEGACY_DAILY_CHALLENGES,
+  LEGACY_SEASONAL_CHALLENGES,
+  LEGACY_WEEKLY_CHALLENGES,
+} from './legacy-catalog.js';
+
 export type CosmeticCategory =
   | 'avatar'
   | 'frame'
@@ -345,6 +351,7 @@ export const DAILY_CHALLENGES_POOL: readonly ChallengeDefinition[] = [
     rewardXp: 350,
     rewardVCard: 30,
   },
+  ...LEGACY_DAILY_CHALLENGES,
 ];
 
 export const WEEKLY_CHALLENGES_POOL: readonly ChallengeDefinition[] = [
@@ -378,6 +385,7 @@ export const WEEKLY_CHALLENGES_POOL: readonly ChallengeDefinition[] = [
     rewardXp: 1800,
     rewardVCard: 175,
   },
+  ...LEGACY_WEEKLY_CHALLENGES,
 ];
 
 export const SEASONAL_CHALLENGES_POOL: readonly ChallengeDefinition[] = [
@@ -411,6 +419,7 @@ export const SEASONAL_CHALLENGES_POOL: readonly ChallengeDefinition[] = [
     rewardXp: 3500,
     rewardVCard: 350,
   },
+  ...LEGACY_SEASONAL_CHALLENGES,
 ];
 
 // ── Tournaments ───────────────────────────────────────────────

@@ -18,6 +18,7 @@ export const TOP_TABS: readonly TopTabItem[] = [
   { route: 'battle-card', label: 'Battle Card' },
   { route: 'sfide', label: 'Sfide' },
   { route: 'tornei', label: 'Tornei' },
+  { route: 'top100', label: 'Top 100' },
   { route: 'carriera', label: 'Carriera' },
   { route: 'vcard', label: 'V-Card' },
 ];

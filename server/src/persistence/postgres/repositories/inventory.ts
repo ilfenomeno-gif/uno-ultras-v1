@@ -2,7 +2,7 @@
 // UNO ULTRA Server — Inventory, Crate Unboxing & Loadout Repository
 // ============================================================
 
-import { CATALOG_BY_ID, CATALOG_ITEMS, type CatalogItem } from '@uno/shared';
+import { CATALOG_BY_ID, CATALOG_ITEMS, LEGACY_TITLES_BY_ID, type CatalogItem } from '@uno/shared';
 import { getPostgresPool, query } from '../client.js';
 import { InsufficientFundsError } from './transactions.js';
 
@@ -80,7 +80,8 @@ export async function equipCosmetic(
   itemId: string,
 ): Promise<EquippedLoadout> {
   const defaults = new Set(['default', 'none', 'classic', 't1', 'avatar_default', 'frame_default', 'back_default']);
-  if (!defaults.has(itemId)) {
+  const isLegacyTitle = slot === 'title' && itemId in LEGACY_TITLES_BY_ID;
+  if (!defaults.has(itemId) && !isLegacyTitle) {
     const owned = await query<{ quantity: number }>(
       `SELECT quantity FROM player_inventory WHERE player_id = $1 AND item_id = $2 LIMIT 1`,
       [playerId, itemId],

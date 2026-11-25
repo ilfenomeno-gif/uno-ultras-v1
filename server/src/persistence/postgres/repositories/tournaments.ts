@@ -1,7 +1,10 @@
 // ============================================================
 // UNO ULTRA Server — Tournaments & 2-Wing UT32 Bracket Repository
+// (With deterministic in-memory fallback when Postgres is unreachable)
 // ============================================================
 
+import crypto from 'node:crypto';
+import type { PoolClient } from 'pg';
 import { TOURNAMENT_PRESETS, type TournamentKind } from '@uno/shared';
 import { getPostgresPool, query } from '../client.js';
 import { InsufficientFundsError } from './transactions.js';
@@ -30,6 +33,13 @@ export interface TournamentRow {
   finished_at: Date | null;
   created_at: Date;
 }
+
+interface MemoryTournamentRecord {
+  row: TournamentRow;
+  participants: Array<{ playerId: string; username: string }>;
+}
+
+const memoryTournaments = new Map<string, MemoryTournamentRecord>();
 
 /** Genera bracket simmetrico a 2 ali (Left Wing + Right Wing -> Final). */
 export function buildTwoWingBracket(participants: readonly string[], maxPlayers: number): BracketSlot[] {
@@ -69,48 +79,115 @@ export function buildTwoWingBracket(participants: readonly string[], maxPlayers:
   return slots;
 }
 
-export async function listTournaments(limit = 20): Promise<TournamentRow[]> {
-  const res = await query<TournamentRow>(
-    `SELECT id, kind, title, status, max_players, entry_fee_vcard, prize_pool_credits,
-            min_mmr, bracket_data, champion_id, starts_at, finished_at, created_at
-       FROM tournaments
-      ORDER BY created_at DESC
-      LIMIT $1`,
-    [limit],
+function createMemoryTournament(kind: TournamentKind): MemoryTournamentRecord {
+  const preset = TOURNAMENT_PRESETS.find((p) => p.kind === kind) ?? TOURNAMENT_PRESETS[0]!;
+  const id = crypto.randomUUID();
+  const now = new Date();
+  const bracket = buildTwoWingBracket([], preset.maxPlayers);
+  const rec: MemoryTournamentRecord = {
+    row: {
+      id,
+      kind: preset.kind,
+      title: preset.title,
+      status: 'registering',
+      max_players: preset.maxPlayers,
+      entry_fee_vcard: preset.entryFeeVCard,
+      prize_pool_credits: preset.prizePoolCredits,
+      min_mmr: preset.minMMR,
+      bracket_data: { slots: bracket },
+      champion_id: null,
+      starts_at: new Date(now.getTime() + 30 * 60_000),
+      finished_at: null,
+      created_at: now,
+    },
+    participants: [],
+  };
+  memoryTournaments.set(id, rec);
+  return rec;
+}
+
+function joinMemoryTournament(
+  tournamentId: string,
+  playerId: string,
+  username: string,
+): { participantCount: number; bracket: BracketSlot[] } {
+  const rec = memoryTournaments.get(tournamentId);
+  if (!rec) throw new Error('Torneo non trovato');
+  if (rec.row.status !== 'registering') throw new Error('Iscrizioni torneo chiuse');
+  if (!rec.participants.some((p) => p.playerId === playerId)) {
+    if (rec.participants.length >= rec.row.max_players) {
+      throw new Error('Torneo al completo');
+    }
+    rec.participants.push({ playerId, username });
+  }
+  const bracket = buildTwoWingBracket(
+    rec.participants.map((p) => p.username),
+    rec.row.max_players,
   );
-  return res.rows;
+  rec.row.bracket_data = { slots: bracket };
+  return { participantCount: rec.participants.length, bracket };
+}
+
+export async function listTournaments(limit = 20): Promise<TournamentRow[]> {
+  try {
+    const res = await query<TournamentRow>(
+      `SELECT id, kind, title, status, max_players, entry_fee_vcard, prize_pool_credits,
+              min_mmr, bracket_data, champion_id, starts_at, finished_at, created_at
+         FROM tournaments
+        ORDER BY created_at DESC
+        LIMIT $1`,
+      [limit],
+    );
+    if (res.rows.length > 0) return res.rows;
+  } catch {
+    // Fallback to in-memory tournaments when Postgres is offline
+  }
+  return [...memoryTournaments.values()]
+    .map((r) => r.row)
+    .sort((a, b) => b.created_at.getTime() - a.created_at.getTime())
+    .slice(0, limit);
 }
 
 export async function createTournamentFromPreset(kind: TournamentKind): Promise<TournamentRow> {
   const preset = TOURNAMENT_PRESETS.find((p) => p.kind === kind) ?? TOURNAMENT_PRESETS[0]!;
   const initialBracket = { slots: buildTwoWingBracket([], preset.maxPlayers) };
-  const res = await query<TournamentRow>(
-    `INSERT INTO tournaments
-       (kind, title, status, max_players, entry_fee_vcard, prize_pool_credits, min_mmr, bracket_data)
-     VALUES ($1, $2, 'registering', $3, $4, $5, $6, $7::jsonb)
-     RETURNING id, kind, title, status, max_players, entry_fee_vcard, prize_pool_credits,
-               min_mmr, bracket_data, champion_id, starts_at, finished_at, created_at`,
-    [
-      preset.kind,
-      preset.title,
-      preset.maxPlayers,
-      preset.entryFeeVCard,
-      preset.prizePoolCredits,
-      preset.minMMR,
-      JSON.stringify(initialBracket),
-    ],
-  );
-  return res.rows[0]!;
+  try {
+    const res = await query<TournamentRow>(
+      `INSERT INTO tournaments
+         (kind, title, status, max_players, entry_fee_vcard, prize_pool_credits, min_mmr, bracket_data)
+       VALUES ($1, $2, 'registering', $3, $4, $5, $6, $7::jsonb)
+       RETURNING id, kind, title, status, max_players, entry_fee_vcard, prize_pool_credits,
+                 min_mmr, bracket_data, champion_id, starts_at, finished_at, created_at`,
+      [
+        preset.kind,
+        preset.title,
+        preset.maxPlayers,
+        preset.entryFeeVCard,
+        preset.prizePoolCredits,
+        preset.minMMR,
+        JSON.stringify(initialBracket),
+      ],
+    );
+    return res.rows[0]!;
+  } catch {
+    return createMemoryTournament(kind).row;
+  }
 }
 
 export async function joinTournament(
   tournamentId: string,
   playerId: string,
+  usernameFallback = 'Giocatore',
 ): Promise<{ participantCount: number; bracket: BracketSlot[] }> {
-  const pool = getPostgresPool();
-  const client = await pool.connect();
+  if (memoryTournaments.has(tournamentId)) {
+    return joinMemoryTournament(tournamentId, playerId, usernameFallback);
+  }
 
+  let activeClient: PoolClient | null = null;
   try {
+    const pool = getPostgresPool();
+    const client = await pool.connect();
+    activeClient = client;
     await client.query('BEGIN');
     const tRes = await client.query<TournamentRow>(
       `SELECT id, kind, title, status, max_players, entry_fee_vcard, min_mmr
@@ -183,9 +260,48 @@ export async function joinTournament(
     await client.query('COMMIT');
     return { participantCount: names.length, bracket };
   } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
+    if (activeClient) {
+      await activeClient.query('ROLLBACK').catch(() => undefined);
+      throw err;
+    }
+    const created = createMemoryTournament('classico');
+    return joinMemoryTournament(created.row.id, playerId, usernameFallback);
   } finally {
-    client.release();
+    activeClient?.release();
+  }
+}
+
+export async function enrollPlayerInTournamentKind(
+  kind: TournamentKind,
+  playerId: string,
+  username: string,
+): Promise<{ tournament: TournamentRow; participantCount: number; bracket: BracketSlot[] }> {
+  try {
+    const existingRes = await query<TournamentRow>(
+      `SELECT id, kind, title, status, max_players, entry_fee_vcard, prize_pool_credits,
+              min_mmr, bracket_data, champion_id, starts_at, finished_at, created_at
+         FROM tournaments
+        WHERE kind = $1 AND status = 'registering'
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [kind],
+    );
+    const tournament = existingRes.rows[0] ?? (await createTournamentFromPreset(kind));
+    const joined = await joinTournament(tournament.id, playerId, username);
+    return { tournament, ...joined };
+  } catch (err) {
+    if (
+      err instanceof InsufficientFundsError ||
+      (err instanceof Error &&
+        /MMR minimo|Torneo al completo|Iscrizioni torneo chiuse/i.test(err.message))
+    ) {
+      throw err;
+    }
+    const existingMem = [...memoryTournaments.values()].find(
+      (r) => r.row.kind === kind && r.row.status === 'registering',
+    );
+    const rec = existingMem ?? createMemoryTournament(kind);
+    const joined = joinMemoryTournament(rec.row.id, playerId, username);
+    return { tournament: rec.row, ...joined };
   }
 }

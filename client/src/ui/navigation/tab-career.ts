@@ -5,6 +5,7 @@
 import {
   CATALOG_BY_ID,
   getRankInfo,
+  LEGACY_TITLES_BY_ID,
   SSL_MMR_THRESHOLD,
 } from '@uno/shared';
 import { announce } from '../../core/aria-live.js';
@@ -158,6 +159,7 @@ export function createCareerView(): HTMLElement {
     const avatarMeta = CATALOG_BY_ID[loadout.avatar];
     const frameMeta = CATALOG_BY_ID[loadout.frame];
     const titleMeta = CATALOG_BY_ID[loadout.title];
+    const legacyTitleMeta = LEGACY_TITLES_BY_ID[loadout.title];
 
     const avatarFrame = document.createElement('div');
     avatarFrame.className = `career-avatar-frame ${resolveCareerFrameClass(loadout.frame)}`;
@@ -172,7 +174,12 @@ export function createCareerView(): HTMLElement {
 
     const titlePill = document.createElement('span');
     titlePill.className = 'career-title-pill';
-    titlePill.textContent = titleMeta?.name ?? 'Contendente UNO ULTRA';
+    titlePill.textContent =
+      titleMeta?.name ?? legacyTitleMeta?.name ?? 'Contendente UNO ULTRA';
+    if (legacyTitleMeta?.color) {
+      titlePill.style.color = legacyTitleMeta.color;
+      titlePill.style.borderColor = legacyTitleMeta.color;
+    }
 
     const cosmeticMeta = document.createElement('span');
     cosmeticMeta.className = 'career-cosmetic-sub';

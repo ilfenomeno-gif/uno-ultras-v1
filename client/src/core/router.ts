@@ -11,6 +11,7 @@ export const APP_ROUTES = [
   'battle-card',
   'sfide',
   'tornei',
+  'top100',
   'carriera',
   'vcard',
   'game',

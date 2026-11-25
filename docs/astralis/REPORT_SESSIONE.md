@@ -4,7 +4,18 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
-## Sessione 2026-11-24 (Parte 11) — Redesign Battle Pass / Battle Card ("Neon Stadium Season Pass")
+## Sessione 2026-11-25 — Fix Tornei HTTP 500, Import Targhette & Sfide v52, Tab Top 100 Mondiale
+
+- **Obiettivo**: eliminare gli errori `HTTP 500` all'iscrizione ai tornei e ai timeout Redis, importare tutte le targhette/titoli e sfide dal backup storico `uno_ultra_v52`, e introdurre il nuovo tab **Top 100 Mondiale** con filtri per tutte le `8` modalità e selettore numero giocatori (`1v1`, `3 Giocatori`, `4 Giocatori`).
+- **Stato Lavori**:
+  - `[x]` Estrazione completa in `shared/src/types/legacy-catalog.ts` (riesportato in `shared/src/index.ts` e fuso in `shared/src/types/economy.ts`): **`334` targhette** (`LEGACY_TITLES` / `LEGACY_TITLES_BY_ID`) e **`53` sfide importate** (`31` giornaliere, `15` settimanali, `7` stagionali, con totale di **`62` sfide** attive).
+  - `[x]` Fix tornei & resilienza Redis/DB: reconnect breve in `server/src/persistence/redis/client.ts`, fallback in-memory e `pool.connect()` protetto in `server/src/persistence/postgres/repositories/tournaments.ts`, nuovo endpoint `POST /api/tournaments/enroll` in `server/src/net/tcp/rest-routes/tournaments.ts`, supporto equipaggiamento tutte le `334` targhette in `server/src/persistence/postgres/repositories/inventory.ts` + UI `Armadietto` (`client/src/ui/navigation/tab-locker.ts` con filtri categoria) e `Carriera` (`client/src/ui/navigation/tab-career.ts`).
+  - `[x]` API & Tab **Top 100 Mondiale**: `getTopLeaderboard` per `(mode, playerCount)` in `server/src/persistence/redis/leaderboard.ts`, endpoint `GET /api/leaderboard/top?mode=...&players=...` in `server/src/net/tcp/rest-routes/challenges.ts`, collegamento da `match-settlement.ts`, nuovo tab `Top 100` in `router.ts`, `top-bar.ts`, `tab-controller.ts`, `top100-helpers.ts`, `tab-top100.ts` e `tournaments.css` con selettore modalità + riga `1v1` / `3 Giocatori` / `4 Giocatori`.
+  - `[x]` Test aggiunti in `client/tests/top100-and-legacy.test.ts` (`3` test) e `server/tests/integration/tournaments-and-top100.test.ts` (`2` test) + `npm run ci` verde (**26 suite Vitest / 163 test passati**: shared `74`, server `39`, client `50`; `0` errori ESLint/TS; Vite `179` moduli `index-mvg_kOuR.js` / `index-Der3PVns.css`) + SHA-256 `contenuto-game.md` intatto (`83CAE3C057B35C22B460CC6F61BCF11AA355D1DB5F9EB4F2EC40517B2A1BD4D9`).
+
+---
+
+## Sessione 2026-11-24 (Parte 11) — Redesign Battle Pass / Battle Card ("Neon Stadium Season Pass") (`c57575e`)
 
 - **Obiettivo**: riprogettare esclusivamente la schermata `Battle Card / Battle Pass` con estetica gaming competitiva *Neon Stadium Season Pass* (`#07152E`, `#10264A`, `#1B3558`, `#25D9F2`, `#28E6A0`, `#FFD32A`, `#985BFF`), sotto-navigazione stagionale (`PRE-SEASON`, `QUALIFIERS`, `CHAMPIONSHIP`) con comandi `LB/RB`, progressione Livello/XP separata dalla barra dei Tier sbloccati, tracciato orizzontale di card verticali scorrevoli con mouse/touch/tastiera/controller, pannello Pass Premium separato e barra comandi inferiore contestuale.
 - **Stato Lavori**:

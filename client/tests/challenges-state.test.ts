@@ -31,7 +31,7 @@ describe('Sfide Tabs, Seasonal Pool & Claim State', () => {
   });
 
   it('defines valid Season 1 challenges alongside daily and weekly pools', () => {
-    expect(SEASONAL_CHALLENGES_POOL).toHaveLength(3);
+    expect(SEASONAL_CHALLENGES_POOL.length).toBeGreaterThanOrEqual(3);
     for (const ch of SEASONAL_CHALLENGES_POOL) {
       expect(ch.period).toBe('seasonal');
       expect(ch.target).toBeGreaterThan(0);

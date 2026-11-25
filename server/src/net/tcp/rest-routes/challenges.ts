@@ -4,6 +4,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+import { GAME_MODES, type GameMode } from '@uno/shared';
 import { authRequired } from '../../../auth/middleware.js';
 import { createRateLimiter } from '../../../security/rate-limiter.js';
 import {
@@ -14,7 +15,10 @@ import {
   getMatchReplay,
   getPlayerCareerSummary,
 } from '../../../persistence/postgres/repositories/matches.js';
-import { getTopLeaderboard } from '../../../persistence/redis/leaderboard.js';
+import {
+  getTopLeaderboard,
+  type LeaderboardPlayerCount,
+} from '../../../persistence/redis/leaderboard.js';
 import { listBotSocialProfilesNearMMR } from '../../../persistence/postgres/repositories/bot-social.js';
 
 export const challengesRouter = Router();
@@ -51,8 +55,18 @@ export const leaderboardRouter = Router();
 
 leaderboardRouter.get('/top', async (req, res) => {
   const limit = Number(req.query['limit'] ?? 100);
-  const entries = await getTopLeaderboard(Number.isFinite(limit) ? limit : 100);
-  res.status(200).json({ entries });
+  const rawMode = String(req.query['mode'] ?? 'uno');
+  const mode: GameMode = (GAME_MODES as readonly string[]).includes(rawMode)
+    ? (rawMode as GameMode)
+    : 'uno';
+  const rawPlayers = Number(req.query['players'] ?? 4);
+  const playerCount: LeaderboardPlayerCount =
+    rawPlayers === 2 || rawPlayers === 3 || rawPlayers === 4 ? rawPlayers : 4;
+  const entries = await getTopLeaderboard(Number.isFinite(limit) ? limit : 100, {
+    mode,
+    playerCount,
+  });
+  res.status(200).json({ mode, playerCount, entries });
 });
 
 leaderboardRouter.get('/career', authRequired, async (req, res) => {

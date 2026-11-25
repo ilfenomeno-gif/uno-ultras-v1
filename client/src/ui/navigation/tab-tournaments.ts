@@ -7,10 +7,9 @@ import { announce } from '../../core/aria-live.js';
 import { playEarcon } from '../../core/audio-earcons.js';
 import { computeSafeLoopIndex, hasBlockedModifier } from '../../core/keyboard-nav.js';
 import {
-  createTournament,
+  enrollTournament,
   fetchBalances,
   fetchTournaments,
-  joinTournament,
 } from '../../net/tcp/rest-client.js';
 import { getEconomySnapshot, setEconomySnapshot } from '../../state/inventory-store.js';
 import { getProfile } from '../../state/profile-store.js';
@@ -179,21 +178,28 @@ export function createTournamentsView(): HTMLElement {
     joiningKind = preset.kind;
     renderSchedule();
     try {
-      const created = await createTournament(preset.kind);
-      const tid = String(created.tournament['id'] ?? '');
-      if (tid) {
-        const joined = await joinTournament(tid);
-        bracketHost.innerHTML = '';
-        bracketHost.appendChild(renderBracketView(joined.bracket as UiBracketSlot[]));
-        statusMessage = `Iscritto a ${preset.title}! Partecipanti: ${joined.participantCount}`;
-        playEarcon('confirm');
-        announce(statusMessage, 'polite');
-      }
+      const joined = await enrollTournament(preset.kind);
+      bracketHost.innerHTML = '';
+      bracketHost.appendChild(renderBracketView(joined.bracket as UiBracketSlot[]));
+      statusMessage = `Iscritto a ${preset.title}! Partecipanti: ${joined.participantCount}`;
+      playEarcon('confirm');
+      announce(statusMessage, 'polite');
+      void fetchBalances()
+        .then((b) => {
+          const cur = getEconomySnapshot();
+          setEconomySnapshot({
+            ...cur,
+            vcard: b.vcard,
+            tournamentCredits: b.tournamentCredits,
+          });
+          updateWalletPills();
+        })
+        .catch(() => {});
     } catch (err) {
       statusMessage =
         err instanceof Error
           ? err.message
-          : `Anteprima bracket ${preset.title} aggiornata`;
+          : `Iscrizione a ${preset.title} non completata.`;
       playEarcon('error');
       announce(statusMessage, 'assertive');
     } finally {

@@ -1,5 +1,5 @@
 // ============================================================
-// UNO ULTRA Server — Tournaments REST Router
+// UNO ULTRA Server — Tournaments REST Router (Zero-500 Resilient)
 // ============================================================
 
 import { Router } from 'express';
@@ -9,6 +9,7 @@ import { authRequired } from '../../../auth/middleware.js';
 import { createRateLimiter } from '../../../security/rate-limiter.js';
 import {
   createTournamentFromPreset,
+  enrollPlayerInTournamentKind,
   joinTournament,
   listTournaments,
 } from '../../../persistence/postgres/repositories/tournaments.js';
@@ -17,12 +18,12 @@ import { InsufficientFundsError } from '../../../persistence/postgres/repositori
 export const tournamentsRouter = Router();
 const tournamentCreateLimiter = createRateLimiter({
   scope: 'tournament_create',
-  max: 3,
+  max: 20,
   windowSeconds: 3600,
 });
 const tournamentJoinLimiter = createRateLimiter({
   scope: 'tournament_join',
-  max: 15,
+  max: 25,
   windowSeconds: 60,
 });
 
@@ -69,6 +70,25 @@ tournamentsRouter.post('/', authRequired, tournamentCreateLimiter, async (req, r
   }
 });
 
+tournamentsRouter.post('/enroll', authRequired, tournamentJoinLimiter, async (req, res) => {
+  const parsed = CreateBodySchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Tipo torneo non valido' });
+    return;
+  }
+  try {
+    const out = await enrollPlayerInTournamentKind(
+      parsed.data.kind,
+      req.user!.sub,
+      req.user!.username,
+    );
+    res.status(200).json(out);
+  } catch (err) {
+    const status = err instanceof InsufficientFundsError ? 402 : 400;
+    res.status(status).json({ error: err instanceof Error ? err.message : 'Iscrizione torneo non riuscita' });
+  }
+});
+
 tournamentsRouter.post('/:id/join', authRequired, tournamentJoinLimiter, async (req, res) => {
   const tournamentId = String(req.params['id'] ?? '');
   if (!tournamentId) {
@@ -76,7 +96,7 @@ tournamentsRouter.post('/:id/join', authRequired, tournamentJoinLimiter, async (
     return;
   }
   try {
-    const result = await joinTournament(tournamentId, req.user!.sub);
+    const result = await joinTournament(tournamentId, req.user!.sub, req.user!.username);
     res.status(200).json(result);
   } catch (err) {
     const status = err instanceof InsufficientFundsError ? 402 : 400;

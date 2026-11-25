@@ -2,7 +2,13 @@
 // UNO ULTRA Client — 3-Column Holographic Armadietto (Locker)
 // ============================================================
 
-import { CATALOG_BY_ID, type CosmeticRarity } from '@uno/shared';
+import {
+  CATALOG_BY_ID,
+  LEGACY_TITLES,
+  LEGACY_TITLES_BY_ID,
+  type CosmeticRarity,
+  type LegacyTitleCategory,
+} from '@uno/shared';
 import { announce } from '../../core/aria-live.js';
 import { playEarcon } from '../../core/audio-earcons.js';
 import { computeSafeLoopIndex, hasBlockedModifier } from '../../core/keyboard-nav.js';
@@ -33,13 +39,35 @@ function isCrateId(id: string): id is CrateId {
   return id === 'crate_bronze_100' || id === 'crate_silver_500' || id === 'crate_ssl_1000';
 }
 
+const TITLE_FILTER_CHIPS: ReadonlyArray<{ id: 'all' | LegacyTitleCategory; label: string }> = [
+  { id: 'all', label: 'Tutte (334)' },
+  { id: 'rank', label: 'Rank' },
+  { id: 'ucs', label: 'UCS' },
+  { id: 'uno', label: 'UNO' },
+  { id: 'scala40', label: 'Scala 40' },
+  { id: 'ruba', label: 'Ruba Mazzetto' },
+  { id: 'blackjack', label: 'Blackjack' },
+  { id: 'club', label: 'Club' },
+  { id: 'multi', label: 'Multi-Modalità' },
+  { id: 'battlepass', label: 'Battle Pass' },
+  { id: 'special', label: 'Speciali' },
+];
+
 function resolveItemRarity(itemId: string): CosmeticRarity {
-  return CATALOG_BY_ID[itemId]?.rarity ?? 'common';
+  return CATALOG_BY_ID[itemId]?.rarity ?? LEGACY_TITLES_BY_ID[itemId]?.rarity ?? 'common';
 }
 
 function resolveDisplayName(itemId: string | undefined): string {
   if (!itemId) return 'Predefinito';
-  return CATALOG_BY_ID[itemId]?.name ?? 'Predefinito';
+  return CATALOG_BY_ID[itemId]?.name ?? LEGACY_TITLES_BY_ID[itemId]?.name ?? 'Predefinito';
+}
+
+function resolveDisplayDesc(itemId: string): string {
+  return (
+    CATALOG_BY_ID[itemId]?.description ??
+    LEGACY_TITLES_BY_ID[itemId]?.description ??
+    'Cosmetico sbloccato nel tuo profilo.'
+  );
 }
 
 export function createLockerView(): HTMLElement {
@@ -48,6 +76,7 @@ export function createLockerView(): HTMLElement {
   root.setAttribute('aria-label', 'Armadietto Cosmetici');
 
   let activeCategory: LockerCategoryId = 'avatar';
+  let activeTitleGroup: 'all' | LegacyTitleCategory = 'all';
   let selectedItemId: string | null = null;
   let busyAction = false;
   let statusMessage = '';
@@ -175,9 +204,25 @@ export function createLockerView(): HTMLElement {
     }
   };
 
+  const getEntriesForCategory = (
+    items: readonly ClientInventoryEntry[],
+    category: LockerCategoryId,
+  ): ClientInventoryEntry[] => {
+    const owned = filterOwnedByCategory(items, category);
+    if (category !== 'title') return owned;
+    const seen = new Set(owned.map((e) => e.itemId));
+    const merged: ClientInventoryEntry[] = [...owned];
+    for (const t of LEGACY_TITLES) {
+      if (seen.has(t.id)) continue;
+      if (activeTitleGroup !== 'all' && t.category !== activeTitleGroup) continue;
+      merged.push({ itemId: t.id, category: 'title', quantity: 1 });
+    }
+    return merged;
+  };
+
   const paint = (focusActiveCategory = false): void => {
     const snap = getEconomySnapshot();
-    const categoryItems = filterOwnedByCategory(snap.items, activeCategory);
+    const categoryItems = getEntriesForCategory(snap.items, activeCategory);
     if (
       !selectedItemId ||
       !categoryItems.some((entry) => entry.itemId === selectedItemId)
@@ -234,7 +279,10 @@ export function createLockerView(): HTMLElement {
     });
 
     for (const cat of LOCKER_CATEGORIES) {
-      const count = filterOwnedByCategory(snap.items, cat.id).length;
+      const count =
+        cat.id === 'title'
+          ? LEGACY_TITLES.length + filterOwnedByCategory(snap.items, 'title').length
+          : filterOwnedByCategory(snap.items, cat.id).length;
       const isSelected = cat.id === activeCategory;
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -305,7 +353,7 @@ export function createLockerView(): HTMLElement {
     pedestalCol.innerHTML = '';
 
     const stage = document.createElement('div');
-    const selectedMeta = selectedEntry ? CATALOG_BY_ID[selectedEntry.itemId] : undefined;
+    const selectedLegacyTitle = selectedEntry ? LEGACY_TITLES_BY_ID[selectedEntry.itemId] : undefined;
     const selectedRarity: CosmeticRarity = selectedEntry
       ? resolveItemRarity(selectedEntry.itemId)
       : 'rare';
@@ -347,11 +395,13 @@ export function createLockerView(): HTMLElement {
       info.className = 'locker-pedestal-info';
       const title = document.createElement('h2');
       title.className = 'locker-pedestal-title';
-      title.textContent = selectedMeta?.name ?? selectedEntry.itemId;
+      title.textContent = resolveDisplayName(selectedEntry.itemId);
+      if (selectedLegacyTitle?.color) {
+        title.style.color = selectedLegacyTitle.color;
+      }
       const desc = document.createElement('p');
       desc.className = 'locker-pedestal-desc';
-      desc.textContent =
-        selectedMeta?.description ?? 'Cosmetico sbloccato nel tuo profilo.';
+      desc.textContent = resolveDisplayDesc(selectedEntry.itemId);
       info.append(title, desc);
 
       const equipped = isItemEquippedInLoadout(
@@ -457,6 +507,27 @@ export function createLockerView(): HTMLElement {
         : `${categoryItems.length} sbloccati`;
     gridHeader.append(gridTitle, gridCount);
 
+    let titleFilterRow: HTMLElement | null = null;
+    if (activeCategory === 'title') {
+      titleFilterRow = document.createElement('div');
+      titleFilterRow.className = 'locker-title-filters';
+      for (const chip of TITLE_FILTER_CHIPS) {
+        const chipBtn = document.createElement('button');
+        chipBtn.type = 'button';
+        chipBtn.className = `tournaments-filter-btn${
+          activeTitleGroup === chip.id ? ' active' : ''
+        }`;
+        chipBtn.textContent = chip.label;
+        chipBtn.addEventListener('click', () => {
+          activeTitleGroup = chip.id;
+          selectedItemId = null;
+          playEarcon('nav');
+          paint();
+        });
+        titleFilterRow.appendChild(chipBtn);
+      }
+    }
+
     const invGrid = document.createElement('div');
     invGrid.className = 'locker-inv-grid';
 
@@ -467,7 +538,9 @@ export function createLockerView(): HTMLElement {
       invGrid.appendChild(emptyCard);
     } else {
       for (const entry of categoryItems) {
+        const legacyTitle = LEGACY_TITLES_BY_ID[entry.itemId];
         const meta = CATALOG_BY_ID[entry.itemId];
+        const displayName = meta?.name ?? legacyTitle?.name ?? entry.itemId;
         const rarity = resolveItemRarity(entry.itemId);
         const equipped = isItemEquippedInLoadout(
           entry.itemId,
@@ -483,7 +556,7 @@ export function createLockerView(): HTMLElement {
         }${equipped ? ' is-equipped' : ''}`;
         card.setAttribute(
           'aria-label',
-          `${meta?.name ?? entry.itemId}, rarità ${rarity}${
+          `${displayName}, rarità ${rarity}${
             equipped ? ', equipaggiato' : ''
           }`
         );
@@ -513,7 +586,10 @@ export function createLockerView(): HTMLElement {
 
         const nameEl = document.createElement('div');
         nameEl.className = 'locker-inv-name';
-        nameEl.textContent = meta?.name ?? entry.itemId;
+        nameEl.textContent = displayName;
+        if (legacyTitle?.color) {
+          nameEl.style.color = legacyTitle.color;
+        }
 
         card.append(topRow, artThumb, nameEl);
 
@@ -521,7 +597,7 @@ export function createLockerView(): HTMLElement {
           selectedItemId = entry.itemId;
           playEarcon('nav');
           announce(
-            `Selezionato ${meta?.name ?? entry.itemId}, ${rarity}`,
+            `Selezionato ${displayName}, ${rarity}`,
             'polite'
           );
           paint();
@@ -537,7 +613,11 @@ export function createLockerView(): HTMLElement {
       }
     }
 
-    gridCol.append(gridHeader, invGrid);
+    if (titleFilterRow) {
+      gridCol.append(gridHeader, titleFilterRow, invGrid);
+    } else {
+      gridCol.append(gridHeader, invGrid);
+    }
   };
 
   paint();

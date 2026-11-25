@@ -13,7 +13,13 @@ export function getRedisClient(): RedisClientType {
     const authSegment = env.REDIS_PASSWORD ? `:${encodeURIComponent(env.REDIS_PASSWORD)}@` : '';
     const url = `redis://${authSegment}${env.REDIS_HOST}:${env.REDIS_PORT}`;
 
-    redisClient = createClient({ url });
+    redisClient = createClient({
+      url,
+      socket: {
+        connectTimeout: 1500,
+        reconnectStrategy: (retries) => (retries > 2 ? false : 300),
+      },
+    });
     redisClient.on('error', (err) => {
       logger.error({ err }, 'Redis client error');
     });

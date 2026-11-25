@@ -299,10 +299,30 @@ export async function claimChallenge(challengeId: string): Promise<{ vcardAfter:
   return postJson('/challenges/claim', { challengeId }, true);
 }
 
-export async function fetchTopLeaderboard(limit = 100): Promise<{
-  entries: readonly { rank: number; playerId: string; username: string; mmr: number; rankTier: string }[];
+export interface TopLeaderboardEntry {
+  rank: number;
+  playerId: string;
+  username: string;
+  mmr: number;
+  rankTier: string;
+  wins?: number;
+  winRate?: number;
+  title?: string;
+  isBot?: boolean;
+}
+
+export async function fetchTopLeaderboard(
+  limit = 100,
+  opts?: { mode?: string; players?: 2 | 3 | 4 },
+): Promise<{
+  mode?: string;
+  playerCount?: number;
+  entries: readonly TopLeaderboardEntry[];
 }> {
-  return requestJson(`/leaderboard/top?limit=${limit}`, { method: 'GET' });
+  const qs = new URLSearchParams({ limit: String(limit) });
+  if (opts?.mode) qs.set('mode', opts.mode);
+  if (opts?.players) qs.set('players', String(opts.players));
+  return requestJson(`/leaderboard/top?${qs.toString()}`, { method: 'GET' });
 }
 
 export async function fetchCareerSummary(): Promise<{
@@ -325,6 +345,14 @@ export async function createTournament(kind: string): Promise<{ tournament: Reco
 
 export async function joinTournament(id: string): Promise<{ participantCount: number; bracket: unknown[] }> {
   return postJson(`/tournaments/${encodeURIComponent(id)}/join`, {}, true);
+}
+
+export async function enrollTournament(kind: string): Promise<{
+  tournament: Record<string, unknown>;
+  participantCount: number;
+  bracket: unknown[];
+}> {
+  return postJson('/tournaments/enroll', { kind }, true);
 }
 
 export async function syncOfflineBatch(events: readonly unknown[]): Promise<{ applied: number }> {

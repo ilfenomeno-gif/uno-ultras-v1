@@ -15,6 +15,7 @@ export * from './types/match.js';
 export * from './types/lobby.js';
 export * from './types/rank.js';
 export * from './types/economy.js';
+export * from './types/legacy-catalog.js';
 
 // Runtime values re-exported from types (non-type)
 export { AI_PROFILES, AI_DIFFICULTIES, AI_THINK_MS } from './types/player.js';

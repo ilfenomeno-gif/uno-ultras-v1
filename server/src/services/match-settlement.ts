@@ -14,6 +14,7 @@ import {
 } from '../persistence/postgres/repositories/matches.js';
 import { findPlayerById } from '../persistence/postgres/repositories/players.js';
 import { applyBalanceDelta } from '../persistence/postgres/repositories/transactions.js';
+import { updateLeaderboardScore } from '../persistence/redis/leaderboard.js';
 import { metrics } from '../observability/metrics.js';
 
 export interface FinishedParticipantInput {
@@ -193,6 +194,13 @@ export async function settleFinishedMatchWithReceipts(
           };
           challengesProgressed = Object.values(metricDeltas).filter((v) => v > 0).length;
           await incrementChallengeMetricsBatch(p.id, metricDeltas);
+
+          const rawCount = input.participants.length;
+          const bucketCount = rawCount <= 2 ? 2 : rawCount === 3 ? 3 : 4;
+          await updateLeaderboardScore(p.id, p.username, mmrAfter, {
+            mode: input.mode,
+            playerCount: bucketCount,
+          });
         } catch (err) {
           logger.warn({ err, playerId: p.id, matchId: input.matchId }, 'Match reward update failed');
         }
