@@ -144,6 +144,17 @@ export async function me(token: string): Promise<MeResponse> {
   });
 }
 
+export async function sendPresenceHeartbeat(): Promise<{
+  ok: boolean;
+  status: 'online' | 'ingame';
+}> {
+  return postJson('/auth/heartbeat', {}, true);
+}
+
+export async function logoutSession(): Promise<void> {
+  await postJson<{ ok: boolean }>('/auth/logout', {}, true);
+}
+
 export async function health(): Promise<{ status: string }> {
   const res = await fetch(`${API_BASE}/health`);
   if (!res.ok) throw new Error(`Health check failed: ${res.status}`);

@@ -46,10 +46,8 @@ function formatWsJoinError(err: unknown): Error {
   );
 }
 
-export async function joinUnoRoom(opts: JoinOptions): Promise<Room<UnoRoomState>> {
-  if (room) await leaveRoom();
-  latestHand = null;
-  const payload = {
+function buildRoomPayload(opts: JoinOptions): Record<string, unknown> {
+  return {
     token: opts.token,
     mode: opts.mode,
     maxPlayers: opts.maxPlayers,
@@ -58,14 +56,39 @@ export async function joinUnoRoom(opts: JoinOptions): Promise<Room<UnoRoomState>
     ...(opts.variant !== undefined ? { variant: opts.variant } : {}),
     ...(opts.spectator !== undefined ? { spectator: opts.spectator } : {}),
   };
+}
+
+function attachHandListener(activeRoom: Room<UnoRoomState>): void {
+  activeRoom.onMessage<HandUpdateMessage>(TCP_CHANNELS.HAND, (msg) => {
+    latestHand = msg.cards;
+  });
+}
+
+export async function joinUnoRoom(opts: JoinOptions): Promise<Room<UnoRoomState>> {
+  if (room) await leaveRoom();
+  latestHand = null;
   try {
-    room = await getClient().joinOrCreate<UnoRoomState>('uno', payload);
+    room = await getClient().joinOrCreate<UnoRoomState>('uno', buildRoomPayload(opts));
   } catch (err) {
     throw formatWsJoinError(err);
   }
-  room.onMessage<HandUpdateMessage>(TCP_CHANNELS.HAND, (msg) => {
-    latestHand = msg.cards;
-  });
+  attachHandListener(room);
+  return room;
+}
+
+export async function createUnoLobbyRoom(opts: JoinOptions): Promise<Room<UnoRoomState>> {
+  if (room) await leaveRoom();
+  latestHand = null;
+  try {
+    room = await getClient().create<UnoRoomState>('uno', {
+      ...buildRoomPayload(opts),
+      fillWithBots: false,
+      private: true,
+    });
+  } catch (err) {
+    throw formatWsJoinError(err);
+  }
+  attachHandListener(room);
   return room;
 }
 
@@ -80,9 +103,7 @@ export async function joinUnoRoomById(
   } catch (err) {
     throw formatWsJoinError(err);
   }
-  room.onMessage<HandUpdateMessage>(TCP_CHANNELS.HAND, (msg) => {
-    latestHand = msg.cards;
-  });
+  attachHandListener(room);
   return room;
 }
 

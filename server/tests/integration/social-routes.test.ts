@@ -276,4 +276,67 @@ describe('Social & Profile REST Routes (IMP-007a)', () => {
     expect(json.mmr).toBe(680);
     expect(json.presenceStatus).toBe('ingame');
   });
+
+  it('POST /api/auth/heartbeat segna il destinatario online per gli inviti e POST /api/auth/logout lo rimette offline', async () => {
+    const bobToken = signAccessToken({ sub: 'u-bob', username: 'Bob' });
+
+    const beforeRes = await fetch(`${baseUrl}/api/invites/send`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${aliceToken}`,
+      },
+      body: JSON.stringify({ targetPlayerId: 'u-bob', roomId: 'room-lobby-1', mode: 'uno' }),
+    });
+    expect(beforeRes.status).toBe(201);
+    expect(((await beforeRes.json()) as { deliveredOnline: boolean }).deliveredOnline).toBe(false);
+
+    const hbRes = await fetch(`${baseUrl}/api/auth/heartbeat`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${bobToken}` },
+    });
+    expect(hbRes.status).toBe(200);
+    expect((await hbRes.json()) as { ok: boolean; status: string }).toEqual({
+      ok: true,
+      status: 'online',
+    });
+
+    const onlineRes = await fetch(`${baseUrl}/api/invites/send`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${aliceToken}`,
+      },
+      body: JSON.stringify({ targetPlayerId: 'u-bob', roomId: 'room-lobby-1', mode: 'uno' }),
+    });
+    expect(onlineRes.status).toBe(201);
+    expect(((await onlineRes.json()) as { deliveredOnline: boolean }).deliveredOnline).toBe(true);
+
+    await presenceService.setInGame('u-bob', 'room-lobby-1');
+    const inGameHb = await fetch(`${baseUrl}/api/auth/heartbeat`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${bobToken}` },
+    });
+    expect(inGameHb.status).toBe(200);
+    expect(((await inGameHb.json()) as { status: string }).status).toBe('ingame');
+
+    const logoutRes = await fetch(`${baseUrl}/api/auth/logout`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${bobToken}` },
+    });
+    expect(logoutRes.status).toBe(200);
+
+    const afterLogoutRes = await fetch(`${baseUrl}/api/invites/send`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${aliceToken}`,
+      },
+      body: JSON.stringify({ targetPlayerId: 'u-bob', roomId: 'room-lobby-1', mode: 'uno' }),
+    });
+    expect(afterLogoutRes.status).toBe(201);
+    expect(((await afterLogoutRes.json()) as { deliveredOnline: boolean }).deliveredOnline).toBe(
+      false,
+    );
+  });
 });

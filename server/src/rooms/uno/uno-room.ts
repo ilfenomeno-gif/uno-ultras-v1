@@ -53,6 +53,7 @@ export interface UnoRoomCreateOptions {
   variant?: MatchVariant;
   customConfig?: CustomMatchConfig;
   matchmade?: boolean;
+  private?: boolean;
   allowedPlayerIds?: readonly string[];
   noShowTimeoutMs?: number;
 }
@@ -152,7 +153,7 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
       options.allowedPlayerIds && options.allowedPlayerIds.length > 0
         ? new Set(options.allowedPlayerIds)
         : null;
-    if (this.isMatchmade) {
+    if (this.isMatchmade || options.private) {
       void this.setPrivate(true);
     }
 
@@ -327,12 +328,12 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
         const nextHost = this.lobbyParticipants.keys().next().value;
         this.state.hostId = nextHost ?? '';
       }
-      void presenceService.setOffline(playerId);
+      void presenceService.setOnline(playerId);
       return;
     }
 
     if (this.state.phase !== 'playing') {
-      void presenceService.setOffline(playerId);
+      void presenceService.setOnline(playerId);
       return;
     }
 
@@ -361,7 +362,11 @@ export class UnoRoom extends BaseRoom<UnoRoomState> {
       }
     }
 
-    void presenceService.setOffline(playerId);
+    if (consented) {
+      void presenceService.setOnline(playerId);
+    } else {
+      void presenceService.setOffline(playerId);
+    }
 
     if (
       this.isRanked &&

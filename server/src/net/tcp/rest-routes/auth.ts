@@ -30,6 +30,7 @@ import {
   type PlayerRow,
 } from '../../../persistence/postgres/repositories/players.js';
 import { revokeTokenJti } from '../../../persistence/redis/session-store.js';
+import { presenceService } from '../../../rooms/base/presence.js';
 import { createRateLimiter } from '../../../security/rate-limiter.js';
 import { csrfOriginGuard } from '../../../security/csrf-protection.js';
 import { logger } from '../../../config/logger.js';
@@ -107,6 +108,7 @@ authRouter.post('/register', registerLimiter, async (req, res) => {
 
     const refresh = await issueRefreshToken(created.id);
     setRefreshCookie(res, refresh.rawToken, refresh.expiresAt);
+    await presenceService.setOnline(created.id).catch(() => undefined);
 
     res.status(201).json({
       token,
@@ -154,6 +156,7 @@ authRouter.post('/login', loginLimiter, async (req, res) => {
 
     const refresh = await issueRefreshToken(player.id);
     setRefreshCookie(res, refresh.rawToken, refresh.expiresAt);
+    await presenceService.setOnline(player.id).catch(() => undefined);
 
     res.status(200).json({
       token,
@@ -192,6 +195,7 @@ authRouter.post('/refresh', csrfOriginGuard, async (req, res) => {
       username: player.username,
     });
     setRefreshCookie(res, rotated.rawToken, rotated.expiresAt);
+    await presenceService.setOnline(player.id).catch(() => undefined);
 
     res.status(200).json({
       token,
@@ -225,12 +229,23 @@ authRouter.post('/logout', csrfOriginGuard, async (req, res) => {
           : 7 * 24 * 60 * 60;
         await revokeTokenJti(verified.jti, ttl);
       }
+      await presenceService.setOffline(verified.sub).catch(() => undefined);
     } catch {
       // Token già scaduto o invalido: ignora
     }
   }
 
   res.status(200).json({ ok: true });
+});
+
+authRouter.post('/heartbeat', authRequired, async (req, res) => {
+  const userId = req.user?.sub;
+  if (!userId) {
+    res.status(401).json({ error: 'Non autenticato' });
+    return;
+  }
+  const status = await presenceService.touchOnline(userId);
+  res.status(200).json({ ok: true, status });
 });
 
 authRouter.get('/me', authRequired, async (req, res) => {

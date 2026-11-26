@@ -76,4 +76,13 @@ describe('PresenceService (IMP-006b)', () => {
     vi.advanceTimersByTime(2 * 1000);
     expect(await service.getStatus('p-ttl')).toBe('offline');
   });
+
+  it('touchOnline porta offline->online e preserva ingame senza declassarlo', async () => {
+    expect(await service.touchOnline('p-touch')).toBe('online');
+    expect(await service.getStatus('p-touch')).toBe('online');
+
+    await service.setInGame('p-touch', 'room-touch');
+    expect(await service.touchOnline('p-touch')).toBe('ingame');
+    expect(await service.getStatus('p-touch')).toBe('ingame');
+  });
 });

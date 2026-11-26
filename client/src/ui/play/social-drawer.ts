@@ -24,6 +24,7 @@ type SocialTab = 'amici' | 'notifiche' | 'bloccati';
 
 export interface SocialDrawerOptions {
   onJoinInvite?: (roomId: string) => Promise<void>;
+  onCreateInviteRoom?: () => Promise<string>;
 }
 
 export class SocialDrawer {
@@ -33,13 +34,16 @@ export class SocialDrawer {
   private readonly userBanner: HTMLElement;
   private readonly feedbackEl: HTMLElement;
   private readonly onJoinInvite: ((roomId: string) => Promise<void>) | undefined;
+  private readonly onCreateInviteRoom: (() => Promise<string>) | undefined;
   private activeTab: SocialTab = 'amici';
   private openState = false;
+  private pollTimer: number | null = null;
   private friendsData: FriendsListResponse | null = null;
   private notifications: NotificationItem[] = [];
 
   constructor(options?: SocialDrawerOptions) {
     this.onJoinInvite = options?.onJoinInvite;
+    this.onCreateInviteRoom = options?.onCreateInviteRoom;
     this.backdrop = document.createElement('div');
     this.backdrop.className = 'social-drawer-backdrop';
     this.backdrop.addEventListener('click', () => this.close());
@@ -107,12 +111,23 @@ export class SocialDrawer {
     this.drawer.classList.add('open');
     this.syncUserBanner();
     void this.refresh();
+    if (this.pollTimer === null) {
+      this.pollTimer = window.setInterval(() => {
+        if (this.openState && getProfile()) {
+          void this.refresh();
+        }
+      }, 5000);
+    }
   }
 
   close(): void {
     this.openState = false;
     this.backdrop.classList.remove('open');
     this.drawer.classList.remove('open');
+    if (this.pollTimer !== null) {
+      window.clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
   }
 
   toggle(): void {
@@ -184,11 +199,15 @@ export class SocialDrawer {
     inviteBtn.textContent = '+';
     inviteBtn.title = `Invita ${friend.username}`;
     inviteBtn.addEventListener('click', async () => {
+      inviteBtn.disabled = true;
       try {
-        const roomId = getRoom()?.roomId ?? 'lobby';
+        let roomId = getRoom()?.roomId;
+        if (!roomId && this.onCreateInviteRoom) {
+          roomId = await this.onCreateInviteRoom();
+        }
         const res = await sendPartyInvite({
           targetPlayerId: friend.playerId,
-          roomId,
+          roomId: roomId ?? 'lobby',
           mode: 'uno',
         });
         this.setFeedback(
@@ -201,6 +220,8 @@ export class SocialDrawer {
           err instanceof Error ? err.message : 'Invito fallito',
           true
         );
+      } finally {
+        inviteBtn.disabled = false;
       }
     });
 

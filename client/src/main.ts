@@ -36,10 +36,17 @@ import {
   enqueueMatchmaking,
   fetchInventory,
   getMatchmakingStatus,
+  sendPresenceHeartbeat,
 } from './net/tcp/rest-client.js';
 import { getEconomySnapshot, setEconomySnapshot } from './state/inventory-store.js';
 import { getProfile, isAuthenticated } from './state/profile-store.js';
-import { colyseus, enterMatch, joinMatchById, signOut } from './net/connection-manager.js';
+import {
+  colyseus,
+  createInviteLobby,
+  enterMatch,
+  joinMatchById,
+  signOut,
+} from './net/connection-manager.js';
 
 function bootstrap(): void {
   const appRoot = document.getElementById('app');
@@ -92,8 +99,25 @@ function bootstrap(): void {
       socialDrawer.close();
       router.navigate('game');
     },
+    onCreateInviteRoom: async () => {
+      const room = await createInviteLobby({ maxPlayers: 2 });
+      router.navigate('game');
+      return room.roomId;
+    },
   });
   document.body.append(socialDrawer.backdrop, socialDrawer.drawer);
+
+  const pingPresence = (): void => {
+    if (!isAuthenticated()) return;
+    void sendPresenceHeartbeat().catch(() => undefined);
+  };
+  pingPresence();
+  window.setInterval(pingPresence, 45_000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      pingPresence();
+    }
+  });
 
   let unmountActiveView: (() => void) | null = null;
   let previousRoute: AppRoute | null = null;

@@ -5,6 +5,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { verifyAccessToken, type VerifiedTokenPayload } from './jwt-service.js';
 import { isTokenRevoked } from '../persistence/redis/session-store.js';
+import { presenceService } from '../rooms/base/presence.js';
 
 declare global {
   namespace Express {
@@ -38,6 +39,7 @@ export async function authRequired(
       return;
     }
     req.user = verified;
+    void presenceService.touchOnline(verified.sub).catch(() => undefined);
     next();
   } catch {
     res.status(401).json({ error: 'Token non valido o scaduto' });

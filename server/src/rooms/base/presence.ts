@@ -91,29 +91,61 @@ export class PresenceService {
     });
   }
 
+  async touchOnline(playerId: string): Promise<Exclude<PresenceStatus, 'offline'>> {
+    const existing = await this.readRecord(playerId);
+    const ts = Date.now();
+    if (existing?.status === 'ingame') {
+      await this.writeState(playerId, {
+        status: 'ingame',
+        ts,
+        ...(existing.roomId !== undefined ? { roomId: existing.roomId } : {}),
+      });
+      return 'ingame';
+    }
+    if (existing?.status === 'online') {
+      await this.writeState(playerId, {
+        status: 'online',
+        ts,
+        ...(existing.roomId !== undefined ? { roomId: existing.roomId } : {}),
+      });
+      return 'online';
+    }
+    await this.setOnline(playerId);
+    return 'online';
+  }
+
   async getStatus(playerId: string): Promise<PresenceStatus> {
+    const record = await this.readRecord(playerId);
+    return record?.status ?? 'offline';
+  }
+
+  private async readRecord(playerId: string): Promise<PresenceRecord | null> {
     const redis = getRedisClient();
     if (redis.isOpen) {
       try {
         const raw = await redis.get(`${PRESENCE_KEY_PREFIX}${playerId}`);
-        if (!raw) return 'offline';
+        if (!raw) return null;
         const parsed = JSON.parse(raw) as Partial<PresenceRecord>;
         if (parsed.status === 'online' || parsed.status === 'ingame') {
-          return parsed.status;
+          return {
+            status: parsed.status,
+            ts: typeof parsed.ts === 'number' ? parsed.ts : Date.now(),
+            ...(typeof parsed.roomId === 'string' ? { roomId: parsed.roomId } : {}),
+          };
         }
-        return 'offline';
+        return null;
       } catch (err) {
         logger.warn({ err, playerId }, 'Presence Redis GET failed; checking memory fallback');
       }
     }
 
     const entry = this.memoryStore.get(playerId);
-    if (!entry) return 'offline';
+    if (!entry) return null;
     if (Date.now() >= entry.expiresAtMs) {
       this.memoryStore.delete(playerId);
-      return 'offline';
+      return null;
     }
-    return entry.record.status;
+    return entry.record;
   }
 
   async listFriendsPresence(

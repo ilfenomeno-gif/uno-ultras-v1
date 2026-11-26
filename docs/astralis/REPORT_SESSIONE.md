@@ -4,6 +4,17 @@ Registro operativo con gating a tre stati: `[ ]` aperto, `[/]` in corso, `[x]` v
 
 ---
 
+## Sessione 2026-11-26 (Parte 18) — Fix Presenza Online in Lobby & Inviti Reali tra Amici
+
+- **Obiettivo**: evitare che giocatori regolarmente autenticati e connessi in lobby risultassero `offline` negli inviti/lista amici, e consentire l'ingresso diretto (`Unisciti`) quando si invita un amico dalla lobby principale.
+- **Stato Lavori**:
+  - `[x]` Server presenza: aggiunto `presenceService.touchOnline()` (`server/src/rooms/base/presence.ts`) che mantiene `ingame` senza declassarlo e aggiorna TTL `online`; collegato a `authRequired` (`server/src/auth/middleware.ts`), `POST /register`, `POST /login`, `POST /refresh`, `POST /logout` (`setOffline`) e nuovo `POST /api/auth/heartbeat` (`server/src/net/tcp/rest-routes/auth.ts`).
+  - `[x]` `UnoRoom` (`server/src/rooms/uno/uno-room.ts`): supporto `options.private` per lobby invito private senza restrizione `allowedPlayerIds`, e `setOnline` invece di `setOffline` su uscita volontaria verso la lobby.
+  - `[x]` Client (`client/src/net/tcp/rest-client.ts`, `colyseus-client.ts`, `connection-manager.ts`, `social-drawer.ts`, `main.ts`): heartbeat automatico (`45s` + `visibilitychange`), logout esplicito verso `/api/auth/logout`, auto-refresh ogni `5s` quando il SocialDrawer è aperto, e creazione automatica di una stanza privata UNO (`createUnoLobbyRoom`) quando si invita un amico dalla lobby principale.
+  - `[x]` Test di integrazione in `server/tests/integration/presence.test.ts` e `server/tests/integration/social-routes.test.ts`.
+
+---
+
 ## Sessione 2026-11-25 (Parte 17) — Audit Dipendenze, Dependabot, CodeQL & E2E Abbandono Ranked
 
 - **Obiettivo**: chiudere l'igiene di sicurezza (verifica `npm audit fix` non-breaking, Dependabot, analisi statica CodeQL) e coprire via Playwright E2E il percorso di abbandono a partita in corso (sostituzione immediata con bot + ban competitivo `403`).
